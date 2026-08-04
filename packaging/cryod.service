@@ -1,0 +1,12 @@
+[Unit]
+Description=Cryo daemon — Alienware m18 R2 thermal/lighting engine
+After=multi-user.target
+
+[Service]
+Type=simple
+ExecStart=/home/i4cdeath/Develop/products/cryo/cryo/.venv/bin/python -m cryo.daemon.main
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
