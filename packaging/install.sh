@@ -33,18 +33,29 @@ sed "s|@PYTHON@|$REPO_DIR/.venv/bin/python|" \
 systemctl daemon-reload
 systemctl enable --now cryod.service
 
+echo ">> Installing icons"
+for size in 32 48 64 128 256 512; do
+    icon_dir="$REAL_HOME/.local/share/icons/hicolor/${size}x${size}/apps"
+    sudo -u "$REAL_USER" mkdir -p "$icon_dir"
+    sudo -u "$REAL_USER" cp "$REPO_DIR/assets/icons/cryo-$size.png" "$icon_dir/cryo.png"
+done
+scalable_dir="$REAL_HOME/.local/share/icons/hicolor/scalable/apps"
+sudo -u "$REAL_USER" mkdir -p "$scalable_dir"
+sudo -u "$REAL_USER" cp "$REPO_DIR/assets/brand/mark.svg" "$scalable_dir/cryo.svg"
+
 echo ">> Installing desktop entry"
-sudo -u "$REAL_USER" mkdir -p "/home/$REAL_USER/.local/share/applications"
-cat > "/home/$REAL_USER/.local/share/applications/cryo.desktop" <<EOF
+sudo -u "$REAL_USER" mkdir -p "$REAL_HOME/.local/share/applications"
+cat > "$REAL_HOME/.local/share/applications/cryo.desktop" <<EOF
 [Desktop Entry]
 Type=Application
 Name=Cryo
 Comment=Alienware m18 R2 command center
 Exec=$REPO_DIR/.venv/bin/cryo-gui
-Icon=preferences-system
+Icon=cryo
 Terminal=false
 Categories=Utility;System;Settings;
+StartupWMClass=cryo
 EOF
-chown "$REAL_USER:" "/home/$REAL_USER/.local/share/applications/cryo.desktop"
+chown "$REAL_USER:" "$REAL_HOME/.local/share/applications/cryo.desktop"
 
 echo ">> Done. Daemon: systemctl status cryod | GUI: cryo-gui | CLI: cryoctl status"

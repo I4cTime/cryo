@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/brand/mark.svg" width="140" alt="Cryo — frost-crystal brand mark" />
+</p>
+
 # Cryo
 
 Personal command center for **one specific machine**: an Alienware m18 R2

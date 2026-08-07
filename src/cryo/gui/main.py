@@ -13,11 +13,13 @@ from PySide6.QtWidgets import QApplication, QMenu, QSystemTrayIcon
 from cryo.gui.bridge import Daemon
 
 QML_DIR = Path(__file__).parent / "qml"
+ASSETS_DIR = Path(__file__).parent / "assets"
 
 PROFILES = ["cool", "quiet", "balanced", "performance", "gmode", "custom"]
 
 
 def _tray_pixmap(color: str = "#00D1FF") -> QPixmap:
+    """Fallback tray art (plain quantum dot) if the brand assets are missing."""
     pixmap = QPixmap(64, 64)
     pixmap.fill(QColor(0, 0, 0, 0))
     painter = QPainter(pixmap)
@@ -29,9 +31,25 @@ def _tray_pixmap(color: str = "#00D1FF") -> QPixmap:
     return pixmap
 
 
+def _brand_icon(name: str) -> QIcon | None:
+    path = ASSETS_DIR / name
+    if path.exists():
+        icon = QIcon(str(path))
+        if not icon.isNull():
+            return icon
+    return None
+
+
 def main() -> None:
     app = QApplication(sys.argv)
     app.setApplicationName("Cryo")
+    # Wayland app_id must match the desktop entry basename, or the
+    # compositor can't associate the window with cryo.desktop (dock and
+    # alt-tab would show a generic icon and the python binary name).
+    app.setDesktopFileName("cryo")
+    window_icon = _brand_icon("cryo-256.png")
+    if window_icon:
+        app.setWindowIcon(window_icon)
     app.setQuitOnLastWindowClosed(False)
 
     daemon = Daemon()
@@ -57,7 +75,9 @@ def main() -> None:
 
     # -- tray --------------------------------------------------------------
 
-    tray = QSystemTrayIcon(QIcon(_tray_pixmap()), app)
+    # The 64px small-cut crystal (hexagon + spokes + core dot) — designed
+    # to stay legible at tray size; falls back to the plain quantum dot.
+    tray = QSystemTrayIcon(_brand_icon("cryo-64.png") or QIcon(_tray_pixmap()), app)
     menu = QMenu()
 
     show_action = QAction("Show Cryo")

@@ -214,6 +214,18 @@ ApplicationWindow {
             // Header
             RowLayout {
                 Layout.fillWidth: true
+                spacing: 12
+                Image {
+                    // Frost-crystal brand mark. PNG rather than the SVG:
+                    // Qt's SVG renderer ignores the mark's blur filters, so
+                    // the pre-rendered raster carries the neon glow.
+                    source: "../assets/cryo-256.png"
+                    Layout.preferredWidth: 42
+                    Layout.preferredHeight: 42
+                    fillMode: Image.PreserveAspectFit
+                    smooth: true
+                    mipmap: true
+                }
                 Column {
                     spacing: 2
                     Text {
