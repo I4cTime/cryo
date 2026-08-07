@@ -8,6 +8,7 @@ to subscribers.
 from __future__ import annotations
 
 import logging
+import time
 from typing import Callable
 
 from cryo.daemon.gamesense import GameDetector, GpuSense
@@ -49,6 +50,7 @@ class Engine:
         self._curve_boost: dict[str, int] = {}
         # Thermal guard state
         self._guard_active = False
+        self._guard_engaged_at = 0.0
         self._guard_saved_boosts: dict[str, int] = {}
         self._peaks: dict[str, float] = {"cpu": 0.0, "gpu": 0.0}
 
@@ -118,11 +120,13 @@ class Engine:
             self._profile_before_game = telemetry["profile"]
             log.info("Game detected (gpu util %s%%)", util)
             self.set_profile(auto["on_game"])
+            telemetry["profile"] = auto["on_game"]
         elif auto["enabled"] and change is False:
             target = self._profile_before_game or auto["after_game"]
             self._profile_before_game = None
             log.info("Game ended, restoring %s", target)
             self.set_profile(target)
+            telemetry["profile"] = target
         telemetry["gaming"] = self.detector.gaming
 
         # AC/battery transitions
@@ -154,6 +158,12 @@ class Engine:
         ):
             self._apply_curves(telemetry, curves)
 
+        # Config state the GUI mirrors (switches, lighting controls) — one
+        # data path for everything the UI shows.
+        telemetry["curves_enabled"] = curves["enabled"]
+        telemetry["auto_enabled"] = auto["enabled"]
+        telemetry["lighting"] = self.config["lighting"]["last"]
+
         return telemetry
 
     def _apply_guard(self, telemetry: dict) -> None:
@@ -177,6 +187,7 @@ class Engine:
                 self.thermal.set_boost("cpu", guard["boost"])
                 self.thermal.set_boost("gpu", guard["boost"])
                 self._guard_active = True
+                self._guard_engaged_at = time.monotonic()
                 log.warning(
                     "THERMAL GUARD engaged (cpu=%s gpu=%s) — fans to %s%%",
                     cpu, gpu, guard["boost"],
@@ -186,7 +197,13 @@ class Engine:
         elif self._guard_active:
             cpu_clear = cpu is None or cpu <= guard["cpu_trip"] - guard["release_c"]
             gpu_clear = gpu is None or gpu <= guard["gpu_trip"] - guard["release_c"]
-            if cpu_clear and gpu_clear:
+            # Boost-clock temp spikes clear within a second or two of full
+            # fans; without a minimum hold the guard saw-tooths (100% -> 0%
+            # -> 100%) every few seconds under sustained load.
+            held_long_enough = (
+                time.monotonic() - self._guard_engaged_at >= guard["min_hold_s"]
+            )
+            if cpu_clear and gpu_clear and held_long_enough:
                 try:
                     for group, saved in self._guard_saved_boosts.items():
                         self.thermal.set_boost(group, saved)

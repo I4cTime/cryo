@@ -10,8 +10,10 @@ from pathlib import Path
 from cryo import paths
 
 DEFAULTS: dict = {
-    # unix group allowed to talk to the daemon socket
-    "socket_group": "i4cdeath",
+    # unix group allowed to talk to the daemon socket. install.sh writes
+    # the installing user into /etc/cryo/config.json; this fallback is the
+    # Debian-family admin group so a fresh daemon is usable without config.
+    "socket_group": "sudo",
     "poll_interval": 1.0,
     "fan_curves": {
         # Applied only while profile == "custom".
@@ -26,12 +28,15 @@ DEFAULTS: dict = {
     },
     "thermal_guard": {
         # Emergency fan boost in ANY profile: trip -> boost to `boost`%,
-        # release once both temps drop `release_c` below their trip points,
+        # release once both temps drop `release_c` below their trip points
+        # AND the guard has been engaged at least `min_hold_s` (boost-clock
+        # spikes cool within seconds; without the hold the fans saw-tooth),
         # restoring the boosts that were set before the guard engaged.
         "enabled": True,
         "cpu_trip": 88,
         "gpu_trip": 85,
         "release_c": 10,
+        "min_hold_s": 30,
         "boost": 100,
     },
     "auto": {

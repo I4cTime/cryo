@@ -151,6 +151,27 @@ class Daemon(QObject):
     def turbo(self) -> bool:
         return bool(self._telemetry.get("turbo", True))
 
+    @Property(bool, notify=telemetryChanged)
+    def curvesEnabled(self) -> bool:
+        return bool(self._telemetry.get("curves_enabled", True))
+
+    @Property(bool, notify=telemetryChanged)
+    def autoEnabled(self) -> bool:
+        return bool(self._telemetry.get("auto_enabled", True))
+
+    @Property(str, notify=telemetryChanged)
+    def lightEffect(self) -> str:
+        return (self._telemetry.get("lighting") or {}).get("effect", "quantum")
+
+    @Property(str, notify=telemetryChanged)
+    def lightColor(self) -> str:
+        color = (self._telemetry.get("lighting") or {}).get("color", "00D1FF")
+        return "#" + str(color).upper()
+
+    @Property(int, notify=telemetryChanged)
+    def lightBrightness(self) -> int:
+        return int((self._telemetry.get("lighting") or {}).get("brightness", 60))
+
     @Property("QVariantList", notify=telemetryChanged)
     def fans(self) -> list:
         return self._telemetry.get("fans", [])

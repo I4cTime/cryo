@@ -28,7 +28,8 @@ if [[ ! -f /etc/cryo/config.json ]]; then
 fi
 
 echo ">> Installing systemd unit"
-cp "$REPO_DIR/packaging/cryod.service" /etc/systemd/system/cryod.service
+sed "s|@PYTHON@|$REPO_DIR/.venv/bin/python|" \
+    "$REPO_DIR/packaging/cryod.service" > /etc/systemd/system/cryod.service
 systemctl daemon-reload
 systemctl enable --now cryod.service
 

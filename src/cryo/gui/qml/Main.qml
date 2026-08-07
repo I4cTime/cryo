@@ -379,7 +379,11 @@ ApplicationWindow {
                         Item { Layout.fillWidth: true }
                         CryoSwitch {
                             id: curvesSwitch
-                            checked: true
+                            // Mirrors daemon config (re-asserted every tick):
+                            // stays truthful across restarts and when a manual
+                            // boost drag disables curves daemon-side.
+                            checked: daemon.curvesEnabled
+                            Binding on checked { value: daemon.curvesEnabled }
                             onToggled: daemon.setCurvesEnabled(checked)
                         }
                     }
@@ -402,6 +406,9 @@ ApplicationWindow {
                         CryoSlider {
                             id: cpuBoost
                             value: root.fanBoost("cpu")
+                            // Keep tracking telemetry after a drag (plain
+                            // `value:` bindings break on user interaction).
+                            Binding on value { when: !cpuBoost.pressed; value: root.fanBoost("cpu") }
                             onPressedChanged: if (!pressed) daemon.setBoost("cpu", Math.round(value))
                         }
                         Text { text: Math.round(cpuBoost.value) + "%"; color: root.fg; font.pixelSize: 12; Layout.preferredWidth: 36 }
@@ -414,6 +421,7 @@ ApplicationWindow {
                         CryoSlider {
                             id: gpuBoost
                             value: root.fanBoost("gpu")
+                            Binding on value { when: !gpuBoost.pressed; value: root.fanBoost("gpu") }
                             onPressedChanged: if (!pressed) daemon.setBoost("gpu", Math.round(value))
                         }
                         Text { text: Math.round(gpuBoost.value) + "%"; color: root.fg; font.pixelSize: 12; Layout.preferredWidth: 36 }
@@ -444,7 +452,8 @@ ApplicationWindow {
                         }
                         Item { Layout.fillWidth: true }
                         CryoSwitch {
-                            checked: true
+                            checked: daemon.autoEnabled
+                            Binding on checked { value: daemon.autoEnabled }
                             onToggled: daemon.setAutoEnabled(checked)
                         }
                     }
@@ -479,7 +488,8 @@ ApplicationWindow {
                     width: parent.width - 28
                     spacing: 10
 
-                    property string currentColor: "#00D1FF"
+                    // Seeded from daemon config; a swatch click takes over.
+                    property string currentColor: daemon.lightColor
 
                     Flow {
                         Layout.fillWidth: true
@@ -496,17 +506,19 @@ ApplicationWindow {
                                 { fx: "off",      label: "Off" }
                             ]
                             delegate: Rectangle {
+                                id: fxChip
                                 required property var modelData
+                                readonly property bool active: modelData.fx === daemon.lightEffect
                                 width: fxText.width + 22
                                 height: 28
                                 radius: 14
-                                color: root.panel
-                                border.color: root.panelBorder
+                                color: active ? Qt.alpha(root.cyan, 0.10) : root.panel
+                                border.color: active ? root.cyan : root.panelBorder
                                 Text {
                                     id: fxText
                                     anchors.centerIn: parent
-                                    text: parent.modelData.label
-                                    color: root.fg
+                                    text: fxChip.modelData.label
+                                    color: fxChip.active ? root.cyan : root.fg
                                     font.pixelSize: 11
                                 }
                                 MouseArea {
@@ -543,7 +555,8 @@ ApplicationWindow {
                         Text { text: "Brightness"; color: root.muted; font.pixelSize: 12; Layout.preferredWidth: 70 }
                         CryoSlider {
                             id: brightness
-                            value: 60
+                            value: daemon.lightBrightness
+                            Binding on value { when: !brightness.pressed; value: daemon.lightBrightness }
                             onPressedChanged: if (!pressed) daemon.setBrightness(Math.round(value))
                         }
                         Text { text: Math.round(brightness.value) + "%"; color: root.fg; font.pixelSize: 12; Layout.preferredWidth: 36 }

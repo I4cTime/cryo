@@ -59,8 +59,12 @@ class Server:
             case "toggle_gmode":
                 return {"ok": True, "profile": engine.toggle_gmode()}
             case "set_boost":
-                # Manual boost implies the user wants control: disable curves.
-                engine.config["fan_curves"]["enabled"] = False
+                # Manual boost implies the user wants control: disable curves
+                # (persisted — otherwise a daemon restart silently re-enables
+                # them and fights the manual setting).
+                if engine.config["fan_curves"]["enabled"]:
+                    engine.config["fan_curves"]["enabled"] = False
+                    config_mod.save(engine.config)
                 engine.thermal.set_boost(req["group"], int(req["value"]))
                 return {"ok": True}
             case "set_turbo":
@@ -120,6 +124,13 @@ class Server:
         interval = self.engine.config["poll_interval"]
         async with server:
             while True:
-                telemetry = await asyncio.to_thread(self.engine.tick)
-                self.broadcast(telemetry)
+                # A transient sysfs/NVML hiccup must not take the daemon
+                # down (a crash-restart cycle would drop guard/curve state
+                # mid-incident) — log it and keep ticking.
+                try:
+                    telemetry = await asyncio.to_thread(self.engine.tick)
+                except Exception:
+                    log.exception("tick failed; continuing")
+                else:
+                    self.broadcast(telemetry)
                 await asyncio.sleep(interval)

@@ -4,7 +4,7 @@ After=multi-user.target
 
 [Service]
 Type=simple
-ExecStart=/home/i4cdeath/Develop/products/cryo/cryo/.venv/bin/python -m cryo.daemon.main
+ExecStart=@PYTHON@ -m cryo.daemon.main
 Restart=on-failure
 RestartSec=3
 
