@@ -47,6 +47,9 @@ class ThermalController:
             )
         self.fans = self._discover_fans()
         self.temps = self._discover_temps()  # {"cpu": index, "gpu": index}
+        # Per-handler node when available — the legacy aggregate rejects
+        # writing "custom" on kernel 6.14+ (see paths.find_platform_profile).
+        self.profile_path, self.profile_choices_path = paths.find_platform_profile()
 
     # -- discovery ---------------------------------------------------------
 
@@ -93,11 +96,11 @@ class ThermalController:
             return 0
 
     def profile(self) -> str:
-        raw = paths.PLATFORM_PROFILE.read_text().strip()
+        raw = self.profile_path.read_text().strip()
         return KERNEL_TO_PROFILE.get(raw, raw)
 
     def profile_choices(self) -> list[str]:
-        raw = paths.PLATFORM_PROFILE_CHOICES.read_text().split()
+        raw = self.profile_choices_path.read_text().split()
         return [KERNEL_TO_PROFILE.get(c, c) for c in raw]
 
     def turbo(self) -> bool:
@@ -118,7 +121,7 @@ class ThermalController:
         kernel = PROFILE_TO_KERNEL.get(name)
         if kernel is None:
             raise ValueError(f"unknown profile {name!r}")
-        paths.PLATFORM_PROFILE.write_text(kernel)
+        self.profile_path.write_text(kernel)
 
     def set_boost(self, group: str, value: int) -> None:
         """Set boost (0-100) on all fans in a group ("cpu"/"gpu")."""

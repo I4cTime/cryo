@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import json
+import logging
 
 from PySide6.QtCore import Property, QObject, QTimer, Signal, Slot
 from PySide6.QtNetwork import QLocalSocket
 
 from cryo import paths
+
+log = logging.getLogger(__name__)
 
 HISTORY_LEN = 120  # samples kept for the sparklines (~2 min at 1 Hz)
 
@@ -15,6 +18,7 @@ HISTORY_LEN = 120  # samples kept for the sparklines (~2 min at 1 Hz)
 class Daemon(QObject):
     telemetryChanged = Signal()
     connectedChanged = Signal()
+    errorOccurred = Signal(str)
 
     def __init__(self, parent: QObject | None = None) -> None:
         super().__init__(parent)
@@ -30,8 +34,13 @@ class Daemon(QObject):
         self._stream.disconnected.connect(self._on_stream_disconnected)
         self._stream.readyRead.connect(self._on_ready_read)
 
-        # Command socket (serialized request/response, responses logged only)
+        # Command socket (serialized request/response). Responses are read
+        # so daemon-side failures surface in the UI instead of vanishing —
+        # a kernel EINVAL on a profile write used to look like "the button
+        # does nothing".
         self._cmd = QLocalSocket(self)
+        self._cmd_buffer = b""
+        self._cmd.readyRead.connect(self._on_cmd_ready_read)
 
         self._reconnect = QTimer(self)
         self._reconnect.setInterval(2000)
@@ -74,10 +83,24 @@ class Daemon(QObject):
             self._gpu_history = (self._gpu_history + [t["gpu_temp"]])[-HISTORY_LEN:]
         self.telemetryChanged.emit()
 
+    def _on_cmd_ready_read(self) -> None:
+        self._cmd_buffer += bytes(self._cmd.readAll().data())
+        while b"\n" in self._cmd_buffer:
+            line, self._cmd_buffer = self._cmd_buffer.split(b"\n", 1)
+            try:
+                response = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if not response.get("ok", True):
+                message = str(response.get("error", "unknown error"))
+                log.warning("daemon rejected command: %s", message)
+                self.errorOccurred.emit(message)
+
     def _command(self, payload: dict) -> None:
         if self._cmd.state() != QLocalSocket.LocalSocketState.ConnectedState:
             self._cmd.connectToServer(str(paths.RUN_SOCKET))
             if not self._cmd.waitForConnected(300):
+                self.errorOccurred.emit("cryod unreachable — command dropped")
                 return
         self._cmd.write(json.dumps(payload).encode() + b"\n")
         self._cmd.flush()
