@@ -16,6 +16,11 @@ REAL_HOME="$(getent passwd "$REAL_USER" | cut -d: -f6)"
 sudo -u "$REAL_USER" env PATH="$REAL_HOME/.local/bin:$PATH" \
     bash -c "cd '$REPO_DIR' && uv sync"
 
+echo ">> Linking CLIs into $REAL_HOME/.local/bin"
+sudo -u "$REAL_USER" mkdir -p "$REAL_HOME/.local/bin"
+sudo -u "$REAL_USER" ln -sf "$REPO_DIR/.venv/bin/cryoctl" "$REAL_HOME/.local/bin/cryoctl"
+sudo -u "$REAL_USER" ln -sf "$REPO_DIR/.venv/bin/cryo-gui" "$REAL_HOME/.local/bin/cryo-gui"
+
 echo ">> Writing default config with socket_group=$REAL_USER"
 mkdir -p /etc/cryo /var/lib/cryo
 if [[ ! -f /etc/cryo/config.json ]]; then
