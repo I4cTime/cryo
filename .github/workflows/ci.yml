@@ -1,0 +1,54 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v9
+        with:
+          python-version: "3.12"
+
+      - name: Sync venv
+        run: uv sync --frozen
+
+      - name: Compile all sources
+        run: uv run python -m compileall -q src
+
+      # Hardware-free import smoke: these modules must import cleanly on any
+      # machine (hardware is only touched at instantiation/daemon start).
+      - name: Import smoke
+        run: |
+          uv run python -c "
+          import cryo, cryo.paths, cryo.cli
+          import cryo.daemon.config, cryo.daemon.gamesense, cryo.daemon.engine, cryo.daemon.server
+          import cryo.hw.elc, cryo.hw.effects, cryo.hw.thermal
+          print('imports ok', cryo.__version__)
+          "
+
+      - name: CLI help
+        run: uv run cryoctl --help
+
+      - name: Version consistency
+        run: |
+          uv run python - <<'PY'
+          import tomllib, cryo
+          with open("pyproject.toml", "rb") as f:
+              py = tomllib.load(f)["project"]["version"]
+          assert py == cryo.__version__, f"pyproject {py} != __init__ {cryo.__version__}"
+          print("version", py)
+          PY

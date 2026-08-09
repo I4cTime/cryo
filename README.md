@@ -1,8 +1,18 @@
-<p align="center">
-  <img src="assets/brand/mark.svg" width="140" alt="Cryo — frost-crystal brand mark" />
-</p>
+<div align="center">
+  <img src="https://raw.githubusercontent.com/I4cTime/cryo/main/assets/brand/social-card.jpg" alt="Cryo — the Alienware command center for Linux" width="100%" />
+</div>
 
 # Cryo
+
+[![CI](https://img.shields.io/github/actions/workflow/status/I4cTime/cryo/ci.yml?style=flat-square&label=CI)](https://github.com/I4cTime/cryo/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/I4cTime/cryo?style=flat-square&color=00d1ff)](https://github.com/I4cTime/cryo/releases)
+[![Docs](https://img.shields.io/badge/docs-cryo.i4c.studio-00d1ff?style=flat-square)](https://cryo.i4c.studio/docs)
+[![Platform](https://img.shields.io/badge/platform-Linux-00d1ff?style=flat-square&logo=linux&logoColor=white)](https://cryo.i4c.studio)
+[![Python](https://img.shields.io/badge/python-3.12%2B-00d1ff?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
+[![License](https://img.shields.io/github/license/I4cTime/cryo?style=flat-square&color=00d1ff)](https://github.com/I4cTime/cryo/blob/main/LICENSE)
+[![Discord](https://img.shields.io/badge/discord-join%20the%20studio-5865F2?style=flat-square&logo=discord&logoColor=white)](https://discord.gg/5uEApw5uEz)
+[![X](https://img.shields.io/badge/follow-%40i4c__studio-000000?style=flat-square&logo=x&logoColor=white)](https://x.com/i4c_studio)
+[![Ko-fi](https://img.shields.io/badge/ko--fi-i4ctime-FF5E5B?style=flat-square&logo=kofi&logoColor=white)](https://ko-fi.com/i4ctime)
 
 The Alienware command center Dell never shipped for Linux. A root daemon +
 QML GUI + CLI built on the mainline **alienware-wmi** kernel driver — no
