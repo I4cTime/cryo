@@ -14,16 +14,32 @@ log = logging.getLogger(__name__)
 
 HISTORY_LEN = 120  # samples kept for the sparklines (~2 min at 1 Hz)
 
+# Shown until the daemon's real capability block arrives (or against a
+# pre-0.2 daemon that doesn't send one): the classic m18 layout.
+DEFAULT_CAPABILITIES: dict = {
+    "model": "",
+    "profiles": ["cool", "quiet", "balanced", "performance", "gmode", "custom"],
+    "gmode": True,
+    "fan_boost": True,
+    "fan_groups": ["cpu", "gpu"],
+    "turbo": True,
+    "ac_supply": True,
+    "lighting": True,
+    "game_detection": True,
+}
+
 
 class Daemon(QObject):
     telemetryChanged = Signal()
     connectedChanged = Signal()
+    capabilitiesChanged = Signal()
     errorOccurred = Signal(str)
 
     def __init__(self, parent: QObject | None = None) -> None:
         super().__init__(parent)
         self._connected = False
         self._telemetry: dict = {}
+        self._capabilities: dict = DEFAULT_CAPABILITIES
         self._cpu_history: list[float] = []
         self._gpu_history: list[float] = []
         self._buffer = b""
@@ -81,6 +97,12 @@ class Daemon(QObject):
             self._cpu_history = (self._cpu_history + [t["cpu_temp"]])[-HISTORY_LEN:]
         if t.get("gpu_temp") is not None:
             self._gpu_history = (self._gpu_history + [t["gpu_temp"]])[-HISTORY_LEN:]
+        # Capabilities are static per daemon run — emit separately and only
+        # on change, so the mode grid isn't rebuilt every tick.
+        caps = t.get("capabilities") or DEFAULT_CAPABILITIES
+        if caps != self._capabilities:
+            self._capabilities = caps
+            self.capabilitiesChanged.emit()
         self.telemetryChanged.emit()
 
     def _on_cmd_ready_read(self) -> None:
@@ -150,6 +172,34 @@ class Daemon(QObject):
     @Property(bool, notify=telemetryChanged)
     def turbo(self) -> bool:
         return bool(self._telemetry.get("turbo", True))
+
+    @Property("QVariantList", notify=capabilitiesChanged)
+    def profiles(self) -> list:
+        return list(self._capabilities.get("profiles", []))
+
+    @Property(bool, notify=capabilitiesChanged)
+    def hasGmode(self) -> bool:
+        return bool(self._capabilities.get("gmode", True))
+
+    @Property(bool, notify=capabilitiesChanged)
+    def hasBoost(self) -> bool:
+        return bool(self._capabilities.get("fan_boost", True))
+
+    @Property(bool, notify=capabilitiesChanged)
+    def hasTurbo(self) -> bool:
+        return bool(self._capabilities.get("turbo", True))
+
+    @Property(bool, notify=capabilitiesChanged)
+    def hasLighting(self) -> bool:
+        return bool(self._capabilities.get("lighting", True))
+
+    @Property(bool, notify=capabilitiesChanged)
+    def hasGameSense(self) -> bool:
+        return bool(self._capabilities.get("game_detection", True))
+
+    @Property(str, notify=capabilitiesChanged)
+    def modelName(self) -> str:
+        return str(self._capabilities.get("model", ""))
 
     @Property(bool, notify=telemetryChanged)
     def curvesEnabled(self) -> bool:

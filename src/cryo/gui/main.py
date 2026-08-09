@@ -15,7 +15,15 @@ from cryo.gui.bridge import Daemon
 QML_DIR = Path(__file__).parent / "qml"
 ASSETS_DIR = Path(__file__).parent / "assets"
 
-PROFILES = ["cool", "quiet", "balanced", "performance", "gmode", "custom"]
+PROFILE_LABELS = {
+    "cool": "Cool",
+    "quiet": "Quiet",
+    "balanced": "Balanced",
+    "performance": "Performance",
+    "gmode": "G-Mode",
+    "custom": "Custom",
+    "low-power": "Low Power",
+}
 
 
 def _tray_pixmap(color: str = "#00D1FF") -> QPixmap:
@@ -89,10 +97,25 @@ def main() -> None:
     menu.addAction(gmode_action)
 
     profile_menu = menu.addMenu("Profile")
-    for profile in PROFILES:
-        action = QAction(profile.capitalize(), profile_menu)
-        action.triggered.connect(lambda checked=False, p=profile: daemon.setProfile(p))
-        profile_menu.addAction(action)
+
+    def rebuild_profile_menu() -> None:
+        # Capability-driven: only the profiles this machine's kernel driver
+        # advertises. capabilitiesChanged fires once per daemon connection.
+        gmode_action.setText(
+            "Toggle G-Mode" if daemon.hasGmode else "Toggle Performance"
+        )
+        profile_menu.clear()
+        for profile in daemon.profiles:
+            action = QAction(
+                PROFILE_LABELS.get(profile, profile.capitalize()), profile_menu
+            )
+            action.triggered.connect(
+                lambda checked=False, p=profile: daemon.setProfile(p)
+            )
+            profile_menu.addAction(action)
+
+    rebuild_profile_menu()
+    daemon.capabilitiesChanged.connect(rebuild_profile_menu)
 
     menu.addSeparator()
     quit_action = QAction("Quit")

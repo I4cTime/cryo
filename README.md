@@ -4,20 +4,34 @@
 
 # Cryo
 
-Personal command center for **one specific machine**: an Alienware m18 R2
-running Pop!_OS. Replaces [tr1xem/AWCC](https://github.com/tr1xem/AWCC) with a
-daemon + QML GUI that adds the things stock AWCC (and the Windows original)
-don't do:
+The Alienware command center Dell never shipped for Linux. A root daemon +
+QML GUI + CLI built on the mainline **alienware-wmi** kernel driver — no
+`acpi_call`, no out-of-tree modules — that does things stock AWCC (and the
+Windows original) don't:
 
 - **Custom fan curves** — temp→boost curves per fan group with hysteresis,
-  driven through the kernel's `custom` platform profile. No acpi_call.
-- **Game detection** — sustained RTX 4080 utilization (NVML) flips the machine
-  into G-Mode automatically, and back out when you quit.
-- **Auto profiles** — battery → quiet, AC → balanced, all configurable.
-- **Live telemetry** — CPU/GPU temps, 4-fan RPM, dGPU load, sparkline history,
-  in-window and in the tray tooltip.
-- **AlienFX lighting** — 4-zone keyboard effects (protocol ported from AWCC),
-  including a `quantum` cyan↔violet preset, restored on boot.
+  driven through the kernel's `custom` platform profile.
+- **Thermal Guard** — an emergency failsafe in *any* profile: trip
+  temperatures force 100% fans, hold, then restore your previous state.
+- **Game detection** — sustained dGPU load (NVML) flips the machine into
+  G-Mode automatically, and restores your previous profile when you quit.
+- **Auto profiles** — battery → quiet, AC → balanced, all configurable,
+  fired on transitions only so manual picks stick.
+- **Live telemetry** — CPU/GPU temps, fan RPM, dGPU load, sparkline
+  history, in-window and in the tray tooltip.
+- **AlienFX lighting** — 4-zone keyboard effects (protocol ported from
+  AWCC), including a `quantum` cyan↔violet preset, restored on boot.
+
+Developed on an **Alienware m18 R2** (Pop!_OS); designed for the wider
+alienware-wmi ecosystem — the daemon probes what your machine supports at
+startup (profiles, G-Mode, fan boost, lighting, turbo control, NVML) and
+every client renders only what exists. See
+[docs/COMPATIBILITY.md](docs/COMPATIBILITY.md) for the feature matrix and
+the tested-models table — reports welcome, working or not:
+
+```sh
+cryoctl doctor   # hardware/driver report, made for pasting into an issue
+```
 
 ## Architecture
 
@@ -25,7 +39,7 @@ don't do:
 ┌──────────────┐   unix socket (JSON lines)   ┌─────────────────────┐
 │ cryo-gui     │◄────────────────────────────►│ cryod (root,        │
 │ (QML + tray) │      /run/cryo.sock          │  systemd service)   │
-└──────────────┘                              │  · platform_profile │
+└──────────────┘                              │  · platform profile │
 ┌──────────────┐                              │  · hwmon fan boost  │
 │ cryoctl (CLI)│◄────────────────────────────►│  · NVML game sense  │
 └──────────────┘                              │  · AlienFX ELC USB  │
@@ -33,9 +47,12 @@ don't do:
 ```
 
 Everything thermal goes through sysfs (`alienware-wmi` kernel driver):
-`/sys/firmware/acpi/platform_profile` and the `alienware_wmi` hwmon
-(`fan*_boost`, `fan*_input`, `temp*_input`). Lighting talks to the ELC USB
-controller (`187c:0551`) directly. Profile names map as:
+the per-handler node under `/sys/class/platform-profile/` and the
+`alienware_wmi` hwmon (`fan*_boost`, `fan*_input`, `temp*_input`).
+Lighting talks to the AW-ELC USB controller (`187c:0550/0551`) directly.
+
+Profile names are translated per machine from what the kernel advertises.
+On G-Mode-capable models:
 
 | Cryo/AWCC name | kernel platform_profile |
 | -------------- | ----------------------- |
@@ -43,12 +60,18 @@ controller (`187c:0551`) directly. Profile names map as:
 | gmode          | performance             |
 | custom         | custom (manual fans)    |
 
+On models without G-Mode, kernel `performance` *is* AWCC Performance and
+Cryo labels it accordingly.
+
 ## Install
 
 ```sh
-uv sync
-sudo packaging/install.sh   # venv sync + /etc/cryo + systemd unit + .desktop
+git clone https://github.com/I4cTime/cryo.git && cd cryo
+sudo packaging/install.sh   # venv sync + /etc/cryo + systemd unit + icons + .desktop
 ```
+
+Requires: the `alienware-wmi` kernel driver (mainline), Python 3.12+, `uv`,
+and — for game detection — the NVIDIA proprietary driver.
 
 ## Use
 
@@ -57,21 +80,21 @@ cryoctl status | watch
 cryoctl profile gmode / cryoctl gmode
 cryoctl boost cpu 60
 cryoctl light quantum / cryoctl light static 00D1FF
+cryoctl doctor
 cryo-gui
 ```
 
 Config lives at `/etc/cryo/config.json` (deep-merged over defaults in
-`cryo/daemon/config.py`) — fan curve points, auto-rule targets, game
-detection thresholds, socket group.
+`cryo/daemon/config.py`) — fan curve points, guard thresholds, auto-rule
+targets, game detection thresholds, socket group.
 
 ## Notes
 
 - Lighting protocol ported from tr1xem/AWCC (GPL-3.0); this repo is
   GPL-3.0-or-later accordingly.
-- G-Mode assumption: on the m18 R2 the kernel maps G-Mode to the
-  `performance` platform profile (`balanced-performance` is AWCC's
-  "Performance"). If Fn+G disagrees, fix `PROFILE_TO_KERNEL` in
-  `src/cryo/hw/thermal.py`.
 - Game detection needs the NVIDIA driver's NVML (present with the
   proprietary driver). Without it, Cryo degrades to manual + AC/battery
   rules only.
+- Fan boost is not implemented by every model's firmware; when the
+  startup probe finds it missing, curves and the Thermal Guard disable
+  themselves visibly rather than failing silently.

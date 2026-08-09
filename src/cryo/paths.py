@@ -1,7 +1,9 @@
-"""Sysfs paths and discovery for the Alienware m18 R2.
+"""Sysfs paths and discovery for alienware-wmi machines.
 
 Everything the daemon touches lives in sysfs, provided by the in-kernel
-alienware-wmi driver — no acpi_call, no custom kernel modules.
+alienware-wmi driver — no acpi_call, no custom kernel modules. Nothing
+here assumes a specific model: supplies, turbo controls, and the
+platform-profile node are discovered, not hardcoded.
 """
 
 from __future__ import annotations
@@ -11,8 +13,11 @@ from pathlib import Path
 PLATFORM_PROFILE = Path("/sys/firmware/acpi/platform_profile")
 PLATFORM_PROFILE_CHOICES = Path("/sys/firmware/acpi/platform_profile_choices")
 PLATFORM_PROFILE_CLASS = Path("/sys/class/platform-profile")
-AC_ONLINE = Path("/sys/class/power_supply/AC/online")
+POWER_SUPPLY_ROOT = Path("/sys/class/power_supply")
 NO_TURBO = Path("/sys/devices/system/cpu/intel_pstate/no_turbo")
+CPUFREQ_BOOST = Path("/sys/devices/system/cpu/cpufreq/boost")
+DMI_ROOT = Path("/sys/devices/virtual/dmi/id")
+USB_DEVICES = Path("/sys/bus/usb/devices")
 
 RUN_SOCKET = Path("/run/cryo.sock")
 CONFIG_FILE = Path("/etc/cryo/config.json")
@@ -53,3 +58,44 @@ def find_hwmon(name: str = "alienware_wmi") -> Path | None:
         except OSError:
             continue
     return None
+
+
+def find_ac_supply() -> Path | None:
+    """`online` file of the first Mains power supply.
+
+    The supply's name varies by model/firmware (AC, ACAD, AC0, ADP1…), so
+    match on type instead of name.
+    """
+    for supply in sorted(POWER_SUPPLY_ROOT.glob("*")):
+        try:
+            if (supply / "type").read_text().strip() == "Mains":
+                return supply / "online"
+        except OSError:
+            continue
+    return None
+
+
+def find_turbo_control() -> tuple[Path, bool] | None:
+    """(path, inverted) for the CPU turbo/boost toggle, or None.
+
+    Intel: intel_pstate/no_turbo (1 = turbo OFF — inverted).
+    AMD/acpi-cpufreq: cpufreq/boost (1 = boost ON — direct).
+    """
+    if NO_TURBO.exists():
+        return NO_TURBO, True
+    if CPUFREQ_BOOST.exists():
+        return CPUFREQ_BOOST, False
+    return None
+
+
+def dmi_model() -> str:
+    """Human-readable vendor + product from DMI, best effort."""
+    parts = []
+    for field in ("sys_vendor", "product_name"):
+        try:
+            value = (DMI_ROOT / field).read_text().strip()
+        except OSError:
+            continue
+        if value:
+            parts.append(value)
+    return " ".join(parts)

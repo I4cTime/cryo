@@ -8,7 +8,7 @@ ApplicationWindow {
     width: 480
     height: 860
     minimumWidth: 440
-    title: "Cryo — Alienware m18 R2"
+    title: daemon.modelName ? "Cryo — " + daemon.modelName : "Cryo"
     color: "#000102"
 
     // ---- quantum fluidity tokens (lib/palette.ts equivalents) ----
@@ -19,6 +19,17 @@ ApplicationWindow {
     readonly property color muted: "#828690"
     readonly property color panel: "#090D14"
     readonly property color panelBorder: "#1A2233"
+
+    // ---- power-mode presentation (grid renders daemon.profiles) ----
+    readonly property var profileGlyphs: ({
+        "cool": "❄", "quiet": "🌙", "balanced": "⚖", "performance": "🚀",
+        "gmode": "👾", "custom": "🎛", "low-power": "🍃"
+    })
+    readonly property var profileLabels: ({
+        "cool": "Cool", "quiet": "Quiet", "balanced": "Balanced",
+        "performance": "Performance", "gmode": "G-Mode", "custom": "Custom",
+        "low-power": "Low Power"
+    })
 
     // ---------- reusable pieces ----------
 
@@ -235,7 +246,11 @@ ApplicationWindow {
                         font.letterSpacing: 6
                         color: root.fg
                     }
-                    Text { text: "Alienware m18 R2"; color: root.muted; font.pixelSize: 12 }
+                    Text {
+                        text: daemon.modelName || "Alienware command center"
+                        color: root.muted
+                        font.pixelSize: 12
+                    }
                 }
                 Item { Layout.fillWidth: true }
                 Rectangle {
@@ -316,19 +331,24 @@ ApplicationWindow {
                 }
             }
 
-            // Power modes
+            // Power modes — rendered from the daemon's capability list, so
+            // Legacy-profile or no-G-Mode machines see exactly what exists.
             SectionTitle { text: "POWER MODES" }
             GridLayout {
                 Layout.fillWidth: true
                 columns: 3
                 rowSpacing: 10
                 columnSpacing: 10
-                ModeButton { name: "cool";        glyph: "❄";  label: "Cool" }
-                ModeButton { name: "quiet";       glyph: "🌙"; label: "Quiet" }
-                ModeButton { name: "balanced";    glyph: "⚖";  label: "Balanced" }
-                ModeButton { name: "performance"; glyph: "🚀"; label: "Performance" }
-                ModeButton { name: "gmode";       glyph: "👾"; label: "G-Mode" }
-                ModeButton { name: "custom";      glyph: "🎛";  label: "Custom" }
+                Repeater {
+                    model: daemon.profiles
+                    delegate: ModeButton {
+                        required property string modelData
+                        name: modelData
+                        glyph: root.profileGlyphs[modelData] ?? "❖"
+                        label: root.profileLabels[modelData]
+                               ?? (modelData.charAt(0).toUpperCase() + modelData.slice(1))
+                    }
+                }
             }
 
             // Telemetry
@@ -391,6 +411,7 @@ ApplicationWindow {
                         Item { Layout.fillWidth: true }
                         CryoSwitch {
                             id: curvesSwitch
+                            enabled: daemon.hasBoost
                             // Mirrors daemon config (re-asserted every tick):
                             // stays truthful across restarts and when a manual
                             // boost drag disables curves daemon-side.
@@ -400,19 +421,21 @@ ApplicationWindow {
                         }
                     }
                     Text {
-                        text: daemon.profile === "custom"
+                        text: !daemon.hasBoost
+                              ? "Fan boost is not supported by this model's firmware — curves and manual boost are unavailable."
+                              : daemon.profile === "custom"
                               ? (curvesSwitch.checked
                                  ? "Curves active — boosts follow temperature."
                                  : "Manual boost — drag sliders below.")
                               : "Switch to Custom mode to control fans directly."
-                        color: root.muted
+                        color: daemon.hasBoost ? root.muted : "#FFB300"
                         font.pixelSize: 11
                         Layout.fillWidth: true
                         wrapMode: Text.WordWrap
                     }
                     RowLayout {
                         Layout.fillWidth: true
-                        enabled: daemon.profile === "custom" && !curvesSwitch.checked
+                        enabled: daemon.hasBoost && daemon.profile === "custom" && !curvesSwitch.checked
                         opacity: enabled ? 1.0 : 0.4
                         Text { text: "CPU boost"; color: root.muted; font.pixelSize: 12; Layout.preferredWidth: 70 }
                         CryoSlider {
@@ -427,7 +450,7 @@ ApplicationWindow {
                     }
                     RowLayout {
                         Layout.fillWidth: true
-                        enabled: daemon.profile === "custom" && !curvesSwitch.checked
+                        enabled: daemon.hasBoost && daemon.profile === "custom" && !curvesSwitch.checked
                         opacity: enabled ? 1.0 : 0.4
                         Text { text: "GPU boost"; color: root.muted; font.pixelSize: 12; Layout.preferredWidth: 70 }
                         CryoSlider {
@@ -471,6 +494,7 @@ ApplicationWindow {
                     }
                     RowLayout {
                         Layout.fillWidth: true
+                        visible: daemon.hasTurbo
                         Text { text: "CPU Turbo Boost"; color: root.fg; font.pixelSize: 13 }
                         Item { Layout.fillWidth: true }
                         CryoSwitch {
@@ -490,8 +514,9 @@ ApplicationWindow {
             }
 
             // Lighting
-            SectionTitle { text: "LIGHTING" }
+            SectionTitle { text: "LIGHTING"; visible: daemon.hasLighting }
             Panel {
+                visible: daemon.hasLighting
                 Layout.fillWidth: true
                 implicitHeight: lightColumn.height + 28
                 ColumnLayout {

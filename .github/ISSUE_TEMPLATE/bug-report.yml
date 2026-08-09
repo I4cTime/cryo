@@ -1,0 +1,25 @@
+name: Bug report
+description: Something broke.
+labels: ["bug"]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: doctor
+    attributes:
+      label: cryoctl doctor output
+      description: Paste the whole block.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Daemon logs
+      description: "`journalctl -u cryod -n 100 --no-pager` around the failure."
+    validations:
+      required: false

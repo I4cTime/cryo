@@ -52,6 +52,9 @@ class GpuSense:
         except Exception as exc:  # NVML missing/driver asleep — degrade gracefully
             log.warning("NVML unavailable, game detection disabled: %s", exc)
 
+    def available(self) -> bool:
+        return self._nvml is not None
+
     def utilization(self) -> int | None:
         """dGPU utilization percent, or None if NVML is unavailable."""
         if self._nvml is None:

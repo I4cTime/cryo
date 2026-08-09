@@ -54,6 +54,20 @@ class Engine:
         self._guard_saved_boosts: dict[str, int] = {}
         self._peaks: dict[str, float] = {"cpu": 0.0, "gpu": 0.0}
 
+        # Static hardware capabilities, resolved once and shipped with
+        # every telemetry frame so clients can render what exists.
+        self.capabilities = {
+            **self.thermal.capabilities(),
+            "lighting": self.effects.available(),
+            "game_detection": self.gpu.available(),
+        }
+        log.info("Capabilities: %s", self.capabilities)
+        if not self.thermal.boost_ok:
+            log.warning(
+                "fan boost unsupported on this model — curves and thermal "
+                "guard cannot actuate and are disabled"
+            )
+
         if config["lighting"]["restore"]:
             self.restore_lighting()
 
@@ -95,9 +109,31 @@ class Engine:
             self._curve_boost.clear()
         log.info("Profile -> %s", name)
 
+    def resolve_profile(self, name: str) -> str | None:
+        """Map a configured profile name onto what this machine offers.
+
+        Config files written for a G-Mode machine say things like
+        on_game: gmode — on a machine without G-Mode the nearest real
+        profile is performance. Returns None if nothing fits.
+        """
+        available = self.thermal.profile_to_kernel
+        if name in available:
+            return name
+        fallbacks = {"gmode": "performance", "performance": "balanced-performance"}
+        fallback = fallbacks.get(name)
+        if fallback in available:
+            log.info("profile %r unavailable here; using %r", name, fallback)
+            return fallback
+        log.warning("profile %r unavailable on this machine; ignoring", name)
+        return None
+
     def toggle_gmode(self) -> str:
+        boost_profile = "gmode" if self.thermal.has_gmode else "performance"
         current = self.thermal.profile()
-        target = self.config["auto"]["after_game"] if current == "gmode" else "gmode"
+        if current == boost_profile:
+            target = self.resolve_profile(self.config["auto"]["after_game"]) or "balanced"
+        else:
+            target = boost_profile
         self.set_profile(target)
         return target
 
@@ -117,25 +153,31 @@ class Engine:
         telemetry["game_procs"] = candidates or []
         change = self.detector.sample(util, candidates)
         if auto["enabled"] and change is True:
-            self._profile_before_game = telemetry["profile"]
-            log.info("Game detected (gpu util %s%%)", util)
-            self.set_profile(auto["on_game"])
-            telemetry["profile"] = auto["on_game"]
+            target = self.resolve_profile(auto["on_game"])
+            if target:
+                self._profile_before_game = telemetry["profile"]
+                log.info("Game detected (gpu util %s%%)", util)
+                self.set_profile(target)
+                telemetry["profile"] = target
         elif auto["enabled"] and change is False:
-            target = self._profile_before_game or auto["after_game"]
+            target = self.resolve_profile(
+                self._profile_before_game or auto["after_game"]
+            )
             self._profile_before_game = None
-            log.info("Game ended, restoring %s", target)
-            self.set_profile(target)
-            telemetry["profile"] = target
+            if target:
+                log.info("Game ended, restoring %s", target)
+                self.set_profile(target)
+                telemetry["profile"] = target
         telemetry["gaming"] = self.detector.gaming
 
         # AC/battery transitions
         ac = telemetry["ac"]
         if auto["enabled"] and ac != self._last_ac:
-            target = auto["on_ac"] if ac else auto["on_battery"]
-            log.info("Power source changed (ac=%s) -> %s", ac, target)
-            self.set_profile(target)
-            telemetry["profile"] = target
+            target = self.resolve_profile(auto["on_ac"] if ac else auto["on_battery"])
+            if target:
+                log.info("Power source changed (ac=%s) -> %s", ac, target)
+                self.set_profile(target)
+                telemetry["profile"] = target
         self._last_ac = ac
 
         # Peak tracking
@@ -149,10 +191,12 @@ class Engine:
         self._apply_guard(telemetry)
         telemetry["guard"] = self._guard_active
 
-        # Fan curves (only meaningful in custom profile)
+        # Fan curves (only meaningful in custom profile, and only when the
+        # firmware honors boost writes at all)
         curves = self.config["fan_curves"]
         if (
             not self._guard_active
+            and self.thermal.boost_ok
             and curves["enabled"]
             and telemetry["profile"] == "custom"
         ):
@@ -163,12 +207,13 @@ class Engine:
         telemetry["curves_enabled"] = curves["enabled"]
         telemetry["auto_enabled"] = auto["enabled"]
         telemetry["lighting"] = self.config["lighting"]["last"]
+        telemetry["capabilities"] = self.capabilities
 
         return telemetry
 
     def _apply_guard(self, telemetry: dict) -> None:
         guard = self.config["thermal_guard"]
-        if not guard["enabled"]:
+        if not guard["enabled"] or not self.thermal.boost_ok:
             return
         cpu = telemetry["cpu_temp"]
         gpu = telemetry["gpu_temp"]

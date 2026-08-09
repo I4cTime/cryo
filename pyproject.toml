@@ -1,6 +1,6 @@
 [project]
 name = "cryo"
-version = "0.1.0"
+version = "0.2.0"
 description = "Personal Alienware m18 R2 command center — thermals, fan curves, lighting, game-aware auto profiles"
 readme = "README.md"
 license = "GPL-3.0-or-later"

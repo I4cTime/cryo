@@ -1,32 +1,32 @@
-"""Thermal control via the alienware-wmi hwmon + ACPI platform_profile.
+"""Thermal control via the alienware-wmi hwmon + platform profiles.
 
-Profile naming: the kernel exposes six platform profiles. On G-Mode-capable
-machines like the m18 R2 the kernel maps AWCC's modes as:
+Profile naming: Cryo uses AWCC-style names in its public API and
+translates to kernel platform-profile values here. The translation is
+built at startup from what the kernel actually advertises, because the
+mapping depends on the machine:
 
-    kernel "balanced-performance"  == AWCC "Performance"
-    kernel "performance"           == AWCC "G-Mode"
-    kernel "custom"                == manual fan control (fan*_boost honored)
+  * G-Mode-capable machines (m18 R2 and friends) expose BOTH
+    "balanced-performance" and "performance" — there, AWCC "Performance"
+    is kernel "balanced-performance" and G-Mode is kernel "performance".
+  * Machines without G-Mode expose plain "performance", which IS AWCC
+    Performance — translating it to G-Mode there would mislabel the mode.
+  * Legacy-profile machines advertise a smaller set (quiet/balanced/
+    performance); anything the kernel doesn't list simply isn't offered.
 
-Cryo uses AWCC-style names in its public API and translates here.
+Fan boost is probed rather than assumed — the kernel docs note boost "is
+not implemented in every model". Without it, curves and the thermal
+guard have nothing to actuate and must disable themselves visibly.
 """
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 
 from cryo import paths
 
-# Cryo/AWCC name -> kernel platform_profile value
-PROFILE_TO_KERNEL = {
-    "cool": "cool",
-    "quiet": "quiet",
-    "balanced": "balanced",
-    "performance": "balanced-performance",
-    "gmode": "performance",
-    "custom": "custom",
-}
-KERNEL_TO_PROFILE = {v: k for k, v in PROFILE_TO_KERNEL.items()}
+log = logging.getLogger(__name__)
 
 
 @dataclass
@@ -50,6 +50,10 @@ class ThermalController:
         # Per-handler node when available — the legacy aggregate rejects
         # writing "custom" on kernel 6.14+ (see paths.find_platform_profile).
         self.profile_path, self.profile_choices_path = paths.find_platform_profile()
+        self._build_profile_maps()
+        self.boost_ok = self._probe_boost()
+        self.ac_path = paths.find_ac_supply()
+        self.turbo_control = paths.find_turbo_control()
 
     # -- discovery ---------------------------------------------------------
 
@@ -68,6 +72,39 @@ class ThermalController:
             idx = int(label_file.name[4:].split("_")[0])
             temps[label_file.read_text().strip().lower()] = idx
         return temps
+
+    def _build_profile_maps(self) -> None:
+        kernel_choices = self.profile_choices_path.read_text().split()
+        # Heuristic per the kernel driver docs: only G-Mode machines carry
+        # balanced-performance AND performance side by side.
+        self.has_gmode = (
+            "balanced-performance" in kernel_choices and "performance" in kernel_choices
+        )
+        to_kernel: dict[str, str] = {}
+        for choice in kernel_choices:
+            if choice == "balanced-performance":
+                to_kernel["performance"] = choice
+            elif choice == "performance":
+                to_kernel["gmode" if self.has_gmode else "performance"] = choice
+            else:
+                # cool / quiet / balanced / custom / low-power — 1:1 names.
+                to_kernel[choice] = choice
+        self.profile_to_kernel = to_kernel
+        self.kernel_to_profile = {v: k for k, v in to_kernel.items()}
+
+    def _probe_boost(self) -> bool:
+        """Whether fan*_boost exists and accepts writes on this model."""
+        for fan in self.fans:
+            boost_path = self.hwmon / f"fan{fan.index}_boost"
+            if not boost_path.exists():
+                continue
+            try:
+                current = boost_path.read_text().strip()
+                boost_path.write_text(current)  # rewrite current value: a no-op
+                return True
+            except OSError as exc:
+                log.warning("fan boost probe failed on %s: %s", boost_path, exc)
+        return False
 
     # -- reads -------------------------------------------------------------
 
@@ -97,43 +134,70 @@ class ThermalController:
 
     def profile(self) -> str:
         raw = self.profile_path.read_text().strip()
-        return KERNEL_TO_PROFILE.get(raw, raw)
+        return self.kernel_to_profile.get(raw, raw)
 
     def profile_choices(self) -> list[str]:
-        raw = self.profile_choices_path.read_text().split()
-        return [KERNEL_TO_PROFILE.get(c, c) for c in raw]
+        return list(self.profile_to_kernel)
 
-    def turbo(self) -> bool:
+    def turbo(self) -> bool | None:
+        """Turbo state, or None when this machine has no known control."""
+        if self.turbo_control is None:
+            return None
+        path, inverted = self.turbo_control
         try:
-            return self._read_int(paths.NO_TURBO) == 0
+            raw = self._read_int(path)
         except OSError:
-            return True
+            return None
+        return raw == 0 if inverted else raw == 1
 
     def ac_online(self) -> bool:
+        if self.ac_path is None:
+            return True
         try:
-            return self._read_int(paths.AC_ONLINE) == 1
+            return self._read_int(self.ac_path) == 1
         except OSError:
             return True
 
     # -- writes (root) -----------------------------------------------------
 
     def set_profile(self, name: str) -> None:
-        kernel = PROFILE_TO_KERNEL.get(name)
+        kernel = self.profile_to_kernel.get(name)
         if kernel is None:
-            raise ValueError(f"unknown profile {name!r}")
+            raise ValueError(
+                f"profile {name!r} not supported on this machine "
+                f"(available: {', '.join(self.profile_to_kernel)})"
+            )
         self.profile_path.write_text(kernel)
 
     def set_boost(self, group: str, value: int) -> None:
         """Set boost (0-100) on all fans in a group ("cpu"/"gpu")."""
+        if not self.boost_ok:
+            raise RuntimeError("fan boost is not supported by this model's firmware")
         value = max(0, min(100, int(value)))
         for fan in self.fans:
             if fan.group == group:
                 (self.hwmon / f"fan{fan.index}_boost").write_text(str(value))
 
     def set_turbo(self, enabled: bool) -> None:
-        paths.NO_TURBO.write_text("0" if enabled else "1")
+        if self.turbo_control is None:
+            raise RuntimeError("no CPU turbo control found on this machine")
+        path, inverted = self.turbo_control
+        raw = (0 if enabled else 1) if inverted else (1 if enabled else 0)
+        path.write_text(str(raw))
 
     # -- snapshots ---------------------------------------------------------
+
+    def capabilities(self) -> dict:
+        """Static hardware capabilities, resolved once at daemon start."""
+        return {
+            "model": paths.dmi_model(),
+            "profiles": self.profile_choices(),
+            "gmode": self.has_gmode,
+            "fan_boost": self.boost_ok,
+            "fan_groups": sorted({f.group for f in self.fans}),
+            "turbo": self.turbo_control is not None,
+            "ac_supply": self.ac_path is not None,
+        }
 
     def telemetry(self) -> dict:
         return {

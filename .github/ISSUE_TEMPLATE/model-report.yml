@@ -1,0 +1,35 @@
+name: Model compatibility report
+description: Report how Cryo behaves on your Alienware / Dell G-Series machine — working or not, both help.
+title: "[model] "
+labels: ["compatibility"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks! Reports like this build the [compatibility matrix](../blob/main/docs/COMPATIBILITY.md).
+  - type: textarea
+    id: doctor
+    attributes:
+      label: cryoctl doctor output
+      description: Run `cryoctl doctor` and paste the whole block (it already includes the code fences).
+      placeholder: |
+        ```
+        cryo                   0.2.0
+        model                  ...
+        ```
+    validations:
+      required: true
+  - type: textarea
+    id: works
+    attributes:
+      label: What works / what doesn't
+      description: Power modes, curves, Guard, G-Mode, lighting, game detection, auto profiles — a quick pass through each is perfect.
+    validations:
+      required: true
+  - type: textarea
+    id: notes
+    attributes:
+      label: Anything else
+      description: Journals (`journalctl -u cryod`), weird behavior, firmware versions.
+    validations:
+      required: false
