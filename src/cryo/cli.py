@@ -62,7 +62,12 @@ def doctor() -> None:
     ac = paths.find_ac_supply()
     add("mains supply", ac.parent.name if ac else "NOT FOUND")
     turbo = paths.find_turbo_control()
-    add("turbo control", f"{turbo[0]}" if turbo else "NOT FOUND")
+    if turbo:
+        turbo_paths, _ = turbo
+        suffix = f" (+{len(turbo_paths) - 1} per-cpu)" if len(turbo_paths) > 1 else ""
+        add("turbo control", f"{turbo_paths[0]}{suffix}")
+    else:
+        add("turbo control", "NOT FOUND")
 
     elc_pids = []
     for dev in sorted(paths.USB_DEVICES.glob("*")):

@@ -75,16 +75,24 @@ def find_ac_supply() -> Path | None:
     return None
 
 
-def find_turbo_control() -> tuple[Path, bool] | None:
-    """(path, inverted) for the CPU turbo/boost toggle, or None.
+def find_turbo_control() -> tuple[list[Path], bool] | None:
+    """(paths, inverted) for the CPU turbo/boost toggle, or None.
 
-    Intel: intel_pstate/no_turbo (1 = turbo OFF — inverted).
-    AMD/acpi-cpufreq: cpufreq/boost (1 = boost ON — direct).
+    Intel: intel_pstate/no_turbo (one file, 1 = turbo OFF — inverted).
+    acpi-cpufreq: the global cpufreq/boost (one file, direct).
+    amd_pstate: no global knob — per-policy cpuX/cpufreq/boost files
+    (direct); reads use the first, writes fan out to all of them.
     """
     if NO_TURBO.exists():
-        return NO_TURBO, True
+        return [NO_TURBO], True
     if CPUFREQ_BOOST.exists():
-        return CPUFREQ_BOOST, False
+        return [CPUFREQ_BOOST], False
+    per_policy = sorted(
+        Path("/sys/devices/system/cpu").glob("cpu[0-9]*/cpufreq/boost"),
+        key=lambda p: int(p.parent.parent.name[3:]),
+    )
+    if per_policy:
+        return per_policy, False
     return None
 
 

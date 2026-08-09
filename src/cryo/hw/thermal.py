@@ -143,9 +143,9 @@ class ThermalController:
         """Turbo state, or None when this machine has no known control."""
         if self.turbo_control is None:
             return None
-        path, inverted = self.turbo_control
+        paths, inverted = self.turbo_control
         try:
-            raw = self._read_int(path)
+            raw = self._read_int(paths[0])
         except OSError:
             return None
         return raw == 0 if inverted else raw == 1
@@ -181,9 +181,10 @@ class ThermalController:
     def set_turbo(self, enabled: bool) -> None:
         if self.turbo_control is None:
             raise RuntimeError("no CPU turbo control found on this machine")
-        path, inverted = self.turbo_control
+        paths, inverted = self.turbo_control
         raw = (0 if enabled else 1) if inverted else (1 if enabled else 0)
-        path.write_text(str(raw))
+        for path in paths:  # one file on Intel/acpi-cpufreq; per-CPU on amd_pstate
+            path.write_text(str(raw))
 
     # -- snapshots ---------------------------------------------------------
 
