@@ -38,8 +38,10 @@ for unit in cryod.service cryod-resume.service; do
         "$REPO_DIR/packaging/$unit" > "/etc/systemd/system/$unit"
 done
 systemctl daemon-reload
-systemctl enable --now cryod.service
-systemctl enable cryod-resume.service
+systemctl enable cryod.service cryod-resume.service
+# restart (not enable --now): a re-run is the documented update path and
+# must put the freshly synced code into the running daemon.
+systemctl restart cryod.service
 
 echo ">> Installing icons"
 for size in 32 48 64 128 256 512; do
