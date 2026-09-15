@@ -11,6 +11,7 @@ import logging
 import time
 from typing import Callable
 
+from cryo.daemon import state as state_mod
 from cryo.daemon.gamesense import GameDetector, GpuSense
 from cryo.hw.effects import Effects
 from cryo.hw.thermal import ThermalController
@@ -35,8 +36,11 @@ def interpolate(curve: list[list[float]], temp: float) -> int:
 
 
 class Engine:
-    def __init__(self, config: dict) -> None:
+    def __init__(self, config: dict, state: dict | None = None) -> None:
         self.config = config
+        # Runtime state the daemon owns (see daemon/state.py) — kept out of
+        # the user's config file.
+        self.state = state if state is not None else state_mod.load()
         self.thermal = ThermalController()
         self.effects = Effects()
         self.gpu = GpuSense()
@@ -71,10 +75,34 @@ class Engine:
         if config["lighting"]["restore"]:
             self.restore_lighting()
 
+    # -- state -------------------------------------------------------------
+
+    def save_state(self) -> None:
+        try:
+            state_mod.save(self.state)
+        except OSError as exc:
+            log.warning("could not save state: %s", exc)
+
+    def lighting_last(self) -> dict:
+        """Lighting to restore: what the user last set, else the config default."""
+        return self.state.get("lighting") or self.config["lighting"]["last"]
+
+    def curves_enabled(self) -> bool:
+        """Config switch, unless a manual boost latched curves off."""
+        latched = self.state.get("fan_curves_enabled")
+        if latched is None:
+            return bool(self.config["fan_curves"]["enabled"])
+        return bool(latched)
+
+    def latch_curves(self, enabled: bool | None) -> None:
+        """None clears the latch (follow config again)."""
+        self.state["fan_curves_enabled"] = enabled
+        self.save_state()
+
     # -- lighting ----------------------------------------------------------
 
     def restore_lighting(self) -> None:
-        last = self.config["lighting"]["last"]
+        last = self.lighting_last()
         try:
             if not self.effects.available():
                 log.warning("ELC not available; skipping lighting restore")
@@ -89,15 +117,48 @@ class Engine:
         self.effects.apply(effect, color)
         if brightness is not None:
             self.effects.brightness(brightness)
-        self.config["lighting"]["last"] = {
+        self.state["lighting"] = {
             "effect": effect,
             "color": f"{color:06X}",
-            **(
-                {"brightness": brightness}
+            "brightness": (
+                brightness
                 if brightness is not None
-                else {"brightness": self.config["lighting"]["last"].get("brightness", 60)}
+                else self.lighting_last().get("brightness", 60)
             ),
         }
+        self.save_state()
+
+    def set_brightness(self, value: int) -> None:
+        self.effects.brightness(value)
+        self.state["lighting"] = {**self.lighting_last(), "brightness": int(value)}
+        self.save_state()
+
+    def reapply(self) -> dict:
+        """Re-assert everything firmware and drivers may have dropped.
+
+        Run after resume: USB re-enumeration loses the lighting controller
+        handle (and sometimes the effect), the platform profile can come
+        back changed, and NVML may need a fresh init.
+        """
+        result: dict = {}
+        self.effects.reset()
+        lighting_ok = self.effects.available()
+        if lighting_ok:
+            self.restore_lighting()
+        result["lighting"] = lighting_ok
+        try:
+            profile = self.thermal.profile()
+            self.thermal.set_profile(profile)
+            result["profile"] = profile
+        except (OSError, ValueError) as exc:
+            log.warning("profile re-apply failed: %s", exc)
+            result["profile"] = None
+        result["nvml"] = self.gpu.reinit()
+        self.capabilities["game_detection"] = self.gpu.available()
+        self._curve_anchor.clear()
+        self._curve_boost.clear()
+        log.info("Re-applied state after resume: %s", result)
+        return result
 
     # -- profile helpers ---------------------------------------------------
 
@@ -140,15 +201,28 @@ class Engine:
     # -- tick --------------------------------------------------------------
 
     def tick(self) -> dict:
+        if self.gpu.maybe_reinit():
+            self.capabilities["game_detection"] = True
+            log.info("NVML came up; game detection enabled")
+
         telemetry = self.thermal.telemetry()
         util = self.gpu.utilization()
         telemetry["gpu_util"] = util
+        vram = self.gpu.memory()
+        telemetry["vram_used_mb"], telemetry["vram_total_mb"] = vram or (None, None)
+        telemetry["gpu_power_w"] = self.gpu.power_w()
+        telemetry["gpu_clock_mhz"] = self.gpu.clock_mhz()
+        snapshot = self.gpu.snapshot()
+        all_procs, graphics_procs = snapshot if snapshot else ([], None)
+        telemetry["vram_procs"] = [
+            {"name": name, "vram_mb": mb} for name, mb in all_procs[:5]
+        ]
 
         auto = self.config["auto"]
 
         # Game transitions
         candidates = self.gpu.game_candidates(
-            self.detector.ignore, self.detector.min_vram_mb
+            self.detector.ignore, self.detector.min_vram_mb, procs=graphics_procs
         )
         telemetry["game_procs"] = candidates or []
         change = self.detector.sample(util, candidates)
@@ -194,19 +268,20 @@ class Engine:
         # Fan curves (only meaningful in custom profile, and only when the
         # firmware honors boost writes at all)
         curves = self.config["fan_curves"]
+        curves_on = self.curves_enabled()
         if (
             not self._guard_active
             and self.thermal.boost_ok
-            and curves["enabled"]
+            and curves_on
             and telemetry["profile"] == "custom"
         ):
             self._apply_curves(telemetry, curves)
 
         # Config state the GUI mirrors (switches, lighting controls) — one
         # data path for everything the UI shows.
-        telemetry["curves_enabled"] = curves["enabled"]
+        telemetry["curves_enabled"] = curves_on
         telemetry["auto_enabled"] = auto["enabled"]
-        telemetry["lighting"] = self.config["lighting"]["last"]
+        telemetry["lighting"] = self.lighting_last()
         telemetry["capabilities"] = self.capabilities
 
         return telemetry

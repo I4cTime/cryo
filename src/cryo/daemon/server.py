@@ -20,9 +20,17 @@ from cryo.daemon.engine import Engine
 log = logging.getLogger(__name__)
 
 
+# A subscriber that stops reading (hung GUI, suspended terminal) would
+# otherwise make the daemon buffer telemetry forever.
+MAX_SUBSCRIBER_BACKLOG = 256 * 1024
+
+
 class Server:
-    def __init__(self, engine: Engine) -> None:
+    def __init__(self, engine: Engine, overrides: dict | None = None) -> None:
         self.engine = engine
+        # The user's partial config (what /etc/cryo/config.json holds). Only
+        # this is ever written back — never the merged config.
+        self.overrides: dict = overrides if overrides is not None else {}
         self.subscribers: set[asyncio.StreamWriter] = set()
         self._last_telemetry: dict = {}
 
@@ -59,12 +67,13 @@ class Server:
             case "toggle_gmode":
                 return {"ok": True, "profile": engine.toggle_gmode()}
             case "set_boost":
-                # Manual boost implies the user wants control: disable curves
-                # (persisted — otherwise a daemon restart silently re-enables
-                # them and fights the manual setting).
-                if engine.config["fan_curves"]["enabled"]:
-                    engine.config["fan_curves"]["enabled"] = False
-                    config_mod.save(engine.config)
+                # Manual boost implies the user wants control: latch curves
+                # off in daemon state (persisted — otherwise a daemon restart
+                # silently re-enables them and fights the manual setting).
+                # The user's config file is left alone; re-enabling curves
+                # through set_config clears the latch.
+                if engine.curves_enabled():
+                    engine.latch_curves(False)
                 engine.thermal.set_boost(req["group"], int(req["value"]))
                 return {"ok": True}
             case "set_turbo":
@@ -76,20 +85,26 @@ class Server:
                     int(req.get("color", "00D1FF"), 16),
                     req.get("brightness"),
                 )
-                config_mod.save(engine.config)
                 return {"ok": True}
             case "set_brightness":
-                engine.effects.brightness(int(req["value"]))
-                engine.config["lighting"]["last"]["brightness"] = int(req["value"])
-                config_mod.save(engine.config)
+                engine.set_brightness(int(req["value"]))
                 return {"ok": True}
             case "get_config":
-                return {"ok": True, "config": engine.config}
+                return {"ok": True, "config": engine.config, "overrides": self.overrides}
             case "set_config":
-                engine.config = config_mod._merge(engine.config, req["patch"])
+                patch = req["patch"]
+                if not isinstance(patch, dict):
+                    raise ValueError("patch must be an object")
+                self.overrides = config_mod._merge(self.overrides, patch)
+                engine.config = config_mod.merged(self.overrides)
                 engine.detector.configure(engine.config["auto"])
-                config_mod.save(engine.config)
+                if "enabled" in patch.get("fan_curves", {}):
+                    # An explicit curves switch overrides the manual-boost latch.
+                    engine.latch_curves(None)
+                config_mod.save_overrides(self.overrides)
                 return {"ok": True, "config": engine.config}
+            case "reapply":
+                return {"ok": True, **engine.reapply()}
             case unknown:
                 return {"ok": False, "error": f"unknown op {unknown!r}"}
 
@@ -101,6 +116,16 @@ class Server:
             return
         payload = json.dumps({"event": "telemetry", **telemetry}).encode() + b"\n"
         for writer in list(self.subscribers):
+            transport = writer.transport
+            if transport.is_closing() or (
+                transport.get_write_buffer_size() > MAX_SUBSCRIBER_BACKLOG
+            ):
+                # Gone, or not reading: drop it rather than buffer forever.
+                self.subscribers.discard(writer)
+                if not transport.is_closing():
+                    log.warning("dropping stalled telemetry subscriber")
+                    writer.close()
+                continue
             try:
                 writer.write(payload)
             except Exception:

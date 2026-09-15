@@ -1,0 +1,13 @@
+[Unit]
+Description=Cryo — re-apply lighting, profile and NVML after resume
+# USB re-enumeration drops the lighting controller handle and firmware can
+# come back in a different platform profile; NVML may need a fresh init.
+After=suspend.target hibernate.target hybrid-sleep.target suspend-then-hibernate.target
+Requisite=cryod.service
+
+[Service]
+Type=oneshot
+ExecStart=@PYTHON@ -m cryo.cli reapply
+
+[Install]
+WantedBy=suspend.target hibernate.target hybrid-sleep.target suspend-then-hibernate.target

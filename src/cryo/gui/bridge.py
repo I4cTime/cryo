@@ -42,6 +42,8 @@ class Daemon(QObject):
         self._capabilities: dict = DEFAULT_CAPABILITIES
         self._cpu_history: list[float] = []
         self._gpu_history: list[float] = []
+        self._vram_history: list[float] = []
+        self._vram_peak = 0
         self._buffer = b""
 
         # Telemetry stream socket
@@ -97,6 +99,9 @@ class Daemon(QObject):
             self._cpu_history = (self._cpu_history + [t["cpu_temp"]])[-HISTORY_LEN:]
         if t.get("gpu_temp") is not None:
             self._gpu_history = (self._gpu_history + [t["gpu_temp"]])[-HISTORY_LEN:]
+        if t.get("vram_used_mb") is not None:
+            self._vram_history = (self._vram_history + [t["vram_used_mb"]])[-HISTORY_LEN:]
+            self._vram_peak = max(self._vram_peak, t["vram_used_mb"])
         # Capabilities are static per daemon run — emit separately and only
         # on change, so the mode grid isn't rebuilt every tick.
         caps = t.get("capabilities") or DEFAULT_CAPABILITIES
@@ -148,6 +153,30 @@ class Daemon(QObject):
     @Property(int, notify=telemetryChanged)
     def gpuUtil(self) -> int:
         return self._telemetry.get("gpu_util") or 0
+
+    @Property(int, notify=telemetryChanged)
+    def vramUsed(self) -> int:
+        return self._telemetry.get("vram_used_mb") or 0
+
+    @Property(int, notify=telemetryChanged)
+    def vramTotal(self) -> int:
+        return self._telemetry.get("vram_total_mb") or 0
+
+    @Property(int, notify=telemetryChanged)
+    def vramPeak(self) -> int:
+        return self._vram_peak
+
+    @Property(float, notify=telemetryChanged)
+    def gpuPower(self) -> float:
+        return self._telemetry.get("gpu_power_w") or 0.0
+
+    @Property(int, notify=telemetryChanged)
+    def gpuClock(self) -> int:
+        return self._telemetry.get("gpu_clock_mhz") or 0
+
+    @Property("QVariantList", notify=telemetryChanged)
+    def vramProcs(self) -> list:
+        return self._telemetry.get("vram_procs", [])
 
     @Property(bool, notify=telemetryChanged)
     def gaming(self) -> bool:
@@ -233,6 +262,10 @@ class Daemon(QObject):
     @Property("QVariantList", notify=telemetryChanged)
     def gpuHistory(self) -> list:
         return self._gpu_history
+
+    @Property("QVariantList", notify=telemetryChanged)
+    def vramHistory(self) -> list:
+        return self._vram_history
 
     # -- slots (commands) --------------------------------------------------
 

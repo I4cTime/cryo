@@ -12,8 +12,9 @@ from cryo import __version__, paths
 USAGE = """\
 cryoctl — Cryo control CLI
 
-  cryoctl status                     Show telemetry snapshot
-  cryoctl watch                      Stream live telemetry
+  cryoctl status [--json]            Show telemetry snapshot (--json: raw frame)
+  cryoctl watch [--log FILE.csv]     Stream live telemetry (--log: append CSV,
+                                     made for long leak-hunt sessions)
   cryoctl profile <name>             cool|quiet|balanced|performance|gmode|custom
                                      (availability varies by model — see doctor)
   cryoctl gmode                      Toggle G-Mode
@@ -21,7 +22,9 @@ cryoctl — Cryo control CLI
   cryoctl turbo <on|off>             CPU turbo boost
   cryoctl light <effect> [RRGGBB]    static|breathe|spectrum|rainbow|wave|backforth|quantum|off
   cryoctl brightness <0-100>         Keyboard brightness
-  cryoctl config                     Dump daemon config
+  cryoctl config                     Dump effective config (+ your overrides)
+  cryoctl reapply                    Re-assert lighting/profile/NVML (run by
+                                     cryod-resume.service after suspend)
   cryoctl doctor                     Hardware/driver compatibility report
                                      (paste into GitHub model reports)
 """
@@ -109,7 +112,73 @@ def doctor() -> None:
     print("```")
 
 
-def request(payload: dict, stream: bool = False) -> None:
+def fmt_status(st: dict) -> str:
+    """Human-readable status; the raw frame stays behind --json."""
+    lines: list[str] = []
+
+    def add(label: str, value: str) -> None:
+        lines.append(f"{label:<9} {value}")
+
+    flags = " ".join(
+        name for name, on in (("GAMING", st.get("gaming")), ("GUARD", st.get("guard"))) if on
+    )
+    add("profile", str(st.get("profile", "?")) + (f"   [{flags}]" if flags else ""))
+
+    for group in ("cpu", "gpu"):
+        temp = st.get(f"{group}_temp")
+        peak = st.get(f"{group}_peak")
+        fans = "  ".join(
+            f"{f['rpm']} rpm ({f['boost']}%)"
+            for f in st.get("fans", [])
+            if f.get("group") == group
+        )
+        parts = [f"{temp:.0f}°C" if temp is not None else "—"]
+        if peak:
+            parts.append(f"peak {peak:.0f}°C")
+        if fans:
+            parts.append(fans)
+        add(group, "  ·  ".join(parts))
+
+    util = st.get("gpu_util")
+    if util is not None:
+        parts = [f"{util}% load"]
+        if st.get("gpu_power_w") is not None:
+            parts.append(f"{st['gpu_power_w']:.0f} W")
+        if st.get("gpu_clock_mhz") is not None:
+            parts.append(f"{st['gpu_clock_mhz']} MHz")
+        add("dgpu", "  ·  ".join(parts))
+
+    used, total = st.get("vram_used_mb"), st.get("vram_total_mb")
+    if used is not None and total:
+        add("vram", f"{used / 1024:.1f} / {total / 1024:.1f} GB")
+        for proc in st.get("vram_procs", []):
+            add("", f"{proc['vram_mb'] / 1024:5.1f} GB  {proc['name']}")
+
+    add(
+        "power",
+        ("AC" if st.get("ac") else "battery")
+        + ("  ·  turbo on" if st.get("turbo") else "  ·  turbo off"),
+    )
+    return "\n".join(lines)
+
+
+CSV_HEADER = [
+    "time", "profile", "cpu_temp", "gpu_temp", "gpu_util", "gpu_power_w",
+    "gpu_clock_mhz", "vram_used_mb", "vram_total_mb", "gaming", "guard",
+    "fan_rpms", "top_proc", "top_proc_mb",
+]
+
+
+def request(
+    payload: dict,
+    stream: bool = False,
+    log_path: str | None = None,
+    raw: bool = False,
+) -> None:
+    import contextlib
+    import csv
+    import datetime
+
     sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     try:
         sock.connect(str(paths.RUN_SOCKET))
@@ -118,20 +187,52 @@ def request(payload: dict, stream: bool = False) -> None:
     sock.sendall(json.dumps(payload).encode() + b"\n")
     buf = sock.makefile()
     first = json.loads(buf.readline())
-    print(json.dumps(first, indent=2))
+    if payload.get("op") == "status" and not raw and "status" in first:
+        print(fmt_status(first["status"]))
+    else:
+        print(json.dumps(first, indent=2))
     if stream:
-        try:
-            for line in buf:
-                event = json.loads(line)
-                cpu = event.get("cpu_temp")
-                gpu = event.get("gpu_temp")
-                fans = " ".join(f"{f['rpm']}rpm" for f in event.get("fans", []))
-                print(
-                    f"[{event.get('profile')}] cpu {cpu}°C gpu {gpu}°C "
-                    f"util {event.get('gpu_util')}% gaming={event.get('gaming')} | {fans}"
-                )
-        except KeyboardInterrupt:
-            pass
+        with contextlib.ExitStack() as stack:
+            writer = None
+            log_file = None
+            if log_path:
+                log_file = stack.enter_context(open(log_path, "a", newline=""))
+                writer = csv.writer(log_file)
+                if log_file.tell() == 0:
+                    writer.writerow(CSV_HEADER)
+            try:
+                for line in buf:
+                    event = json.loads(line)
+                    cpu = event.get("cpu_temp")
+                    gpu = event.get("gpu_temp")
+                    power = event.get("gpu_power_w")
+                    power_s = (
+                        f" {power:.0f}W {event.get('gpu_clock_mhz')}MHz"
+                        if power is not None
+                        else ""
+                    )
+                    vram = event.get("vram_used_mb")
+                    vram_s = f" vram {vram / 1024:.1f}G" if vram is not None else ""
+                    fans = " ".join(f"{f['rpm']}rpm" for f in event.get("fans", []))
+                    print(
+                        f"[{event.get('profile')}] cpu {cpu}°C gpu {gpu}°C "
+                        f"util {event.get('gpu_util')}%{power_s}{vram_s} "
+                        f"gaming={event.get('gaming')} | {fans}"
+                    )
+                    if writer and log_file:
+                        top = (event.get("vram_procs") or [{}])[0]
+                        writer.writerow([
+                            datetime.datetime.now().isoformat(timespec="seconds"),
+                            event.get("profile"), cpu, gpu, event.get("gpu_util"),
+                            power, event.get("gpu_clock_mhz"),
+                            vram, event.get("vram_total_mb"),
+                            int(bool(event.get("gaming"))), int(bool(event.get("guard"))),
+                            ";".join(str(f["rpm"]) for f in event.get("fans", [])),
+                            top.get("name", ""), top.get("vram_mb", ""),
+                        ])
+                        log_file.flush()
+            except KeyboardInterrupt:
+                pass
 
 
 def main() -> None:
@@ -142,8 +243,12 @@ def main() -> None:
     match args:
         case ["status"]:
             request({"op": "status"})
+        case ["status", "--json"]:
+            request({"op": "status"}, raw=True)
         case ["watch"]:
             request({"op": "subscribe"}, stream=True)
+        case ["watch", "--log", path]:
+            request({"op": "subscribe"}, stream=True, log_path=path)
         case ["profile", name]:
             request({"op": "set_profile", "profile": name})
         case ["gmode"]:
@@ -161,6 +266,8 @@ def main() -> None:
             request({"op": "set_brightness", "value": int(value)})
         case ["config"]:
             request({"op": "get_config"})
+        case ["reapply"]:
+            request({"op": "reapply"})
         case ["doctor"]:
             doctor()
         case _:

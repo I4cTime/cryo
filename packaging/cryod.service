@@ -1,6 +1,9 @@
 [Unit]
-Description=Cryo daemon — Alienware m18 R2 thermal/lighting engine
-After=multi-user.target
+Description=Cryo daemon — thermal, fan-curve and lighting engine for alienware-wmi laptops
+# The alienware-wmi driver must be up before the daemon probes sysfs.
+After=systemd-modules-load.service
+# A slow driver load must not exhaust the restart budget.
+StartLimitIntervalSec=0
 
 [Service]
 Type=simple

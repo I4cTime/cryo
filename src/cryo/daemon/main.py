@@ -8,6 +8,7 @@ import os
 import sys
 
 from cryo.daemon import config as config_mod
+from cryo.daemon import state as state_mod
 from cryo.daemon.engine import Engine
 from cryo.daemon.server import Server
 
@@ -23,9 +24,10 @@ def main() -> None:
         log.error("cryod needs root (writes platform_profile, fan boosts, USB). Run via systemd or sudo.")
         sys.exit(1)
 
-    cfg = config_mod.load()
-    engine = Engine(cfg)
-    server = Server(engine)
+    overrides = config_mod.load_overrides()
+    cfg = config_mod.merged(overrides)
+    engine = Engine(cfg, state_mod.load())
+    server = Server(engine, overrides)
     log.info(
         "Cryo daemon up — profile=%s fans=%d curves=%s auto=%s",
         engine.thermal.profile(),

@@ -391,6 +391,104 @@ ApplicationWindow {
                 Text { text: daemon.gpuUtil + "%"; color: root.fg; font.pixelSize: 11 }
             }
 
+            // VRAM — sparkline scaled to the card's full capacity, so a
+            // leak reads as a steady climb and healthy load as a plateau.
+            // The per-process rows below it name the offender.
+            Panel {
+                visible: daemon.vramTotal > 0
+                Layout.fillWidth: true
+                implicitHeight: vramColumn.height + 24
+
+                Canvas {
+                    id: vramSpark
+                    anchors.fill: parent
+                    anchors.margins: 1
+                    opacity: 0.35
+                    onPaint: {
+                        const ctx = getContext("2d")
+                        ctx.reset()
+                        const h = daemon.vramHistory
+                        if (!h || h.length < 2 || daemon.vramTotal <= 0)
+                            return
+                        ctx.strokeStyle = root.violetText
+                        ctx.lineWidth = 1.5
+                        ctx.beginPath()
+                        for (let i = 0; i < h.length; i++) {
+                            const x = i / (h.length - 1) * width
+                            const y = height - Math.min(h[i] / daemon.vramTotal, 1) * height
+                            i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y)
+                        }
+                        ctx.stroke()
+                    }
+                    Connections {
+                        target: daemon
+                        function onTelemetryChanged() { vramSpark.requestPaint() }
+                    }
+                }
+
+                ColumnLayout {
+                    id: vramColumn
+                    x: 16
+                    y: 12
+                    width: parent.width - 32
+                    spacing: 6
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        Column {
+                            spacing: 2
+                            Text { text: "VRAM"; color: root.muted; font.pixelSize: 11; font.letterSpacing: 1.5 }
+                            Text {
+                                text: (daemon.vramUsed / 1024).toFixed(1) + " GB"
+                                color: daemon.vramUsed / daemon.vramTotal >= 0.9 ? "#FF5470" : root.fg
+                                font.pixelSize: 20
+                                font.bold: true
+                            }
+                        }
+                        Item { Layout.fillWidth: true }
+                        Column {
+                            spacing: 2
+                            Text {
+                                anchors.right: parent.right
+                                text: "peak " + (daemon.vramPeak / 1024).toFixed(1)
+                                      + " · of " + (daemon.vramTotal / 1024).toFixed(1) + " GB"
+                                color: root.muted
+                                font.pixelSize: 11
+                            }
+                            Text {
+                                anchors.right: parent.right
+                                visible: daemon.gpuPower > 0
+                                text: daemon.gpuPower.toFixed(0) + " W · "
+                                      + daemon.gpuClock + " MHz"
+                                color: root.muted
+                                font.pixelSize: 11
+                            }
+                        }
+                    }
+
+                    Repeater {
+                        model: daemon.vramProcs
+                        delegate: RowLayout {
+                            required property var modelData
+                            Layout.fillWidth: true
+                            spacing: 8
+                            Text {
+                                text: modelData.name
+                                color: root.muted
+                                font.pixelSize: 10
+                                elide: Text.ElideMiddle
+                                Layout.fillWidth: true
+                            }
+                            Text {
+                                text: (modelData.vram_mb / 1024).toFixed(1) + " GB"
+                                color: root.fg
+                                font.pixelSize: 10
+                            }
+                        }
+                    }
+                }
+            }
+
             // Fan control
             SectionTitle { text: "FAN CONTROL" }
             Panel {

@@ -1,4 +1,4 @@
-"""High-level lighting effects for the m18 R2's 4-zone keyboard.
+"""High-level lighting effects for the AW-ELC 4-zone keyboard.
 
 Effect recipes ported from tr1xem/AWCC's EffectController (GPL-3.0), plus
 Cryo-specific "quantum" presets using the I4C palette.
@@ -6,9 +6,17 @@ Cryo-specific "quantum" presets using the I4C palette.
 
 from __future__ import annotations
 
+import logging
 from contextlib import contextmanager
+from typing import Callable, TypeVar
+
+import usb.core
 
 from cryo.hw import elc as _elc
+
+log = logging.getLogger(__name__)
+
+T = TypeVar("T")
 
 # m18 R2 keyboard: four zones, left to right.
 KEYBOARD_ZONES = [0x00, 0x01, 0x02, 0x03]
@@ -41,6 +49,28 @@ class Effects:
             self._elc = _elc.Elc()
         return self._elc
 
+    def reset(self) -> None:
+        """Forget the open handle; the next call re-enumerates the device.
+
+        Suspend/resume re-enumerates USB, which leaves a claimed handle
+        pointing at a device that no longer exists.
+        """
+        if self._elc is not None:
+            try:
+                self._elc.release()
+            except Exception:
+                pass
+        self._elc = None
+
+    def _retrying(self, fn: Callable[[], T]) -> T:
+        """Run a lighting operation; on a USB error reopen the ELC once."""
+        try:
+            return fn()
+        except usb.core.USBError as exc:
+            log.warning("ELC write failed (%s); reopening the controller", exc)
+            self.reset()
+            return fn()
+
     @contextmanager
     def _session(self):
         dev = self._device()
@@ -64,8 +94,12 @@ class Effects:
 
     def brightness(self, value: int) -> None:
         value = max(0, min(100, value))
-        with self._session() as dev:
-            dev.set_dim(100 - value, self.zones)
+
+        def op() -> None:
+            with self._session() as dev:
+                dev.set_dim(100 - value, self.zones)
+
+        self._retrying(op)
 
     def static(self, rgb: int) -> None:
         with self._user_animation() as dev:
@@ -129,6 +163,9 @@ class Effects:
     # -- dispatch used by daemon API --------------------------------------
 
     def apply(self, effect: str, color: int = QUANTUM_CYAN, duration: int | None = None) -> None:
+        self._retrying(lambda: self._apply(effect, color, duration))
+
+    def _apply(self, effect: str, color: int, duration: int | None) -> None:
         match effect:
             case "static":
                 self.static(color)

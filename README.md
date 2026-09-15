@@ -27,8 +27,10 @@ Windows original) don't:
   G-Mode automatically, and restores your previous profile when you quit.
 - **Auto profiles** — battery → quiet, AC → balanced, all configurable,
   fired on transitions only so manual picks stick.
-- **Live telemetry** — CPU/GPU temps, fan RPM, dGPU load, sparkline
-  history, in-window and in the tray tooltip.
+- **Live telemetry** — CPU/GPU temps, fan RPM, dGPU load, power draw and
+  clocks, VRAM usage with session peak and a per-process breakdown,
+  sparkline history — in-window, in the tray tooltip, and streamable to
+  CSV with `cryoctl watch --log` for long debugging sessions.
 - **AlienFX lighting** — 4-zone keyboard effects (protocol ported from
   AWCC), including a `quantum` cyan↔violet preset, restored on boot.
 
@@ -96,7 +98,15 @@ cryo-gui
 
 Config lives at `/etc/cryo/config.json` (deep-merged over defaults in
 `cryo/daemon/config.py`) — fan curve points, guard thresholds, auto-rule
-targets, game detection thresholds, socket group.
+targets, game detection thresholds, socket group. The file holds only your
+overrides and the daemon never rewrites it; what the daemon changes on its
+own (last lighting, the curves-off latch a manual boost sets) lives in
+`/var/lib/cryo/state.json`.
+
+After suspend, `cryod-resume.service` runs `cryoctl reapply`, which reopens
+the lighting controller, re-asserts the platform profile and re-initializes
+NVML. The daemon also retries NVML on its own every 30 s while the NVIDIA
+driver is missing, so starting before the driver loads is fine.
 
 ## Notes
 

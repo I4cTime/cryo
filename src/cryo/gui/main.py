@@ -136,6 +136,7 @@ def main() -> None:
         tray.setToolTip(
             f"Cryo — {daemon.profile}\n"
             f"CPU {daemon.cpuTemp:.0f}°C · GPU {daemon.gpuTemp:.0f}°C"
+            + (f" · VRAM {daemon.vramUsed / 1024:.1f}G" if daemon.vramTotal else "")
             + (" · GAMING" if daemon.gaming else "")
         )
 

@@ -43,6 +43,9 @@ jobs:
       - name: CLI help
         run: uv run cryoctl --help
 
+      - name: Tests
+        run: uv run pytest -q
+
       - name: Version consistency
         run: |
           uv run python - <<'PY'

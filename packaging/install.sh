@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Cryo installer — personal machine, personal assumptions.
+# Cryo installer — sets up the venv, /etc/cryo, the systemd unit, CLI symlinks, icons and a .desktop entry.
 set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
@@ -9,7 +9,12 @@ if [[ $EUID -ne 0 ]]; then
     exit 1
 fi
 
-REAL_USER="${SUDO_USER:-i4cdeath}"
+if [[ -z "${SUDO_USER:-}" || "$SUDO_USER" == "root" ]]; then
+    echo "Run via sudo from your own account (not as root directly): sudo $0" >&2
+    echo "The installer links cryoctl/cryo-gui into that user's ~/.local/bin and grants it socket access." >&2
+    exit 1
+fi
+REAL_USER="$SUDO_USER"
 
 echo ">> Syncing venv (as $REAL_USER)"
 REAL_HOME="$(getent passwd "$REAL_USER" | cut -d: -f6)"
@@ -27,11 +32,14 @@ if [[ ! -f /etc/cryo/config.json ]]; then
     echo "{\"socket_group\": \"$REAL_USER\"}" > /etc/cryo/config.json
 fi
 
-echo ">> Installing systemd unit"
-sed "s|@PYTHON@|$REPO_DIR/.venv/bin/python|" \
-    "$REPO_DIR/packaging/cryod.service" > /etc/systemd/system/cryod.service
+echo ">> Installing systemd units"
+for unit in cryod.service cryod-resume.service; do
+    sed "s|@PYTHON@|$REPO_DIR/.venv/bin/python|" \
+        "$REPO_DIR/packaging/$unit" > "/etc/systemd/system/$unit"
+done
 systemctl daemon-reload
 systemctl enable --now cryod.service
+systemctl enable cryod-resume.service
 
 echo ">> Installing icons"
 for size in 32 48 64 128 256 512; do
@@ -49,7 +57,7 @@ cat > "$REAL_HOME/.local/share/applications/cryo.desktop" <<EOF
 [Desktop Entry]
 Type=Application
 Name=Cryo
-Comment=Alienware m18 R2 command center
+Comment=Command center for Alienware and Dell G-Series laptops
 Exec=$REPO_DIR/.venv/bin/cryo-gui
 Icon=cryo
 Terminal=false

@@ -1,13 +1,23 @@
 """Daemon configuration: JSON file at /etc/cryo/config.json, deep-merged
-over defaults so a partial file is always valid."""
+over defaults so a partial file is always valid.
+
+The file holds *overrides only*. The daemon reads it at startup and, when
+the GUI or `set_config` changes something, writes the updated overrides
+back — never the merged result, so defaults added in later releases keep
+applying to keys the user never touched.
+"""
 
 from __future__ import annotations
 
 import copy
 import json
+import logging
+import os
 from pathlib import Path
 
 from cryo import paths
+
+log = logging.getLogger(__name__)
 
 DEFAULTS: dict = {
     # unix group allowed to talk to the daemon socket. install.sh writes
@@ -81,12 +91,36 @@ def _merge(base: dict, override: dict) -> dict:
     return out
 
 
+def load_overrides(path: Path = paths.CONFIG_FILE) -> dict:
+    """The user's partial config, or {} when missing or unreadable.
+
+    A broken file must not keep the daemon (and with it the thermal guard)
+    from starting: log loudly and run on defaults.
+    """
+    try:
+        raw = json.loads(path.read_text())
+    except FileNotFoundError:
+        return {}
+    except (OSError, ValueError) as exc:
+        log.error("config %s unreadable (%s); running on defaults", path, exc)
+        return {}
+    if not isinstance(raw, dict):
+        log.error("config %s is not a JSON object; running on defaults", path)
+        return {}
+    return raw
+
+
+def merged(overrides: dict) -> dict:
+    return _merge(DEFAULTS, overrides)
+
+
 def load(path: Path = paths.CONFIG_FILE) -> dict:
-    if path.exists():
-        return _merge(DEFAULTS, json.loads(path.read_text()))
-    return copy.deepcopy(DEFAULTS)
+    """Effective config: defaults deep-merged with the user's overrides."""
+    return merged(load_overrides(path))
 
 
-def save(config: dict, path: Path = paths.CONFIG_FILE) -> None:
+def save_overrides(overrides: dict, path: Path = paths.CONFIG_FILE) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(config, indent=2) + "\n")
+    tmp = path.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(overrides, indent=2) + "\n")
+    os.replace(tmp, path)
