@@ -6,7 +6,7 @@ readme = "README.md"
 license = "GPL-3.0-or-later"
 requires-python = ">=3.12"
 dependencies = [
-    "PySide6>=6.7",
+    "PySide6>=6.11.2",
     "pyusb>=1.2",
     "nvidia-ml-py>=12.535",
 ]
