@@ -1,6 +1,6 @@
 [project]
 name = "cryo"
-version = "0.3.0"
+version = "0.3.1"
 description = "Command center for Alienware and Dell G-Series laptops on Linux — thermals, fan curves, Thermal Guard, lighting, game-aware auto profiles"
 readme = "README.md"
 license = "GPL-3.0-or-later"
