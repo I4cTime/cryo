@@ -25,5 +25,5 @@ packages = ["src/cryo"]
 
 [dependency-groups]
 dev = [
-    "pytest>=8",
+    "pytest>=9.1.1",
 ]
