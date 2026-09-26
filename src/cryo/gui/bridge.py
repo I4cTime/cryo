@@ -19,6 +19,7 @@ HISTORY_LEN = 120  # samples kept for the sparklines (~2 min at 1 Hz)
 DEFAULT_CAPABILITIES: dict = {
     "model": "",
     "profiles": ["cool", "quiet", "balanced", "performance", "gmode", "custom"],
+    "thermals": True,
     "gmode": True,
     "fan_boost": True,
     "fan_groups": ["cpu", "gpu"],
@@ -150,7 +151,7 @@ class Daemon(QObject):
 
     @Property(str, notify=telemetryChanged)
     def profile(self) -> str:
-        return self._telemetry.get("profile", "—")
+        return self._telemetry.get("profile") or "—"
 
     @Property(float, notify=telemetryChanged)
     def cpuTemp(self) -> float:
@@ -239,6 +240,15 @@ class Daemon(QObject):
     @Property(str, notify=capabilitiesChanged)
     def modelName(self) -> str:
         return str(self._capabilities.get("model", ""))
+
+    @Property(bool, notify=capabilitiesChanged)
+    def hasThermals(self) -> bool:
+        """Fans + temperatures exist (the driver's hwmon)."""
+        return bool(self._capabilities.get("thermals", True))
+
+    @Property(bool, notify=capabilitiesChanged)
+    def hasProfiles(self) -> bool:
+        return bool(self._capabilities.get("profiles"))
 
     @Property(bool, notify=capabilitiesChanged)
     def hasCpuCap(self) -> bool:

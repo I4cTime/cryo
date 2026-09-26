@@ -14,16 +14,26 @@ def test_everything_present_is_supported():
     assert verdict(FULL) == ("supported", [])
 
 
-def test_missing_hwmon_is_unsupported_regardless_of_the_rest():
+def test_missing_hwmon_is_limited_when_extras_remain():
     level, reasons = verdict({**FULL, "hwmon": False})
-    assert level == "unsupported"
+    assert level == "limited"
     assert any("hwmon" in r for r in reasons)
 
 
-def test_unreadable_profiles_is_unsupported():
+def test_unreadable_profiles_is_limited():
     level, reasons = verdict({**FULL, "profiles": False})
-    assert level == "unsupported"
+    assert level == "limited"
     assert any("platform profiles" in r for r in reasons)
+
+
+def test_nothing_to_drive_is_unsupported():
+    nothing = {k: False for k in FULL}
+    level, reasons = verdict(nothing)
+    assert level == "unsupported"
+    assert any("nothing" in r or "fall back" in r for r in reasons)
+    # The 2011 Aurora from issue #9: no hwmon/profiles/ELC, but NVML + turbo → limited.
+    aurora = {**nothing, "nvml": True, "turbo": True, "cpu_cap": True}
+    assert verdict(aurora)[0] == "limited"
 
 
 def test_missing_optional_features_are_partial_with_reasons():

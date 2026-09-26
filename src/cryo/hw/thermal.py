@@ -32,10 +32,12 @@ COMPATIBILITY_URL = "https://github.com/I4cTime/cryo/blob/main/docs/COMPATIBILIT
 
 
 class UnsupportedHardware(RuntimeError):
-    """The machine lacks something Cryo cannot run without.
+    """Nothing on this machine for Cryo to drive at all.
 
     Raised at startup with a plain-language reason; cryod turns it into a
     clear log line + exit status instead of a traceback and a restart loop.
+    Missing *parts* (no hwmon, no profiles) do not raise: the controller
+    degrades and the capability block tells clients what exists.
     """
 
 
@@ -50,30 +52,36 @@ class ThermalController:
     """Reads temps/RPM and writes profiles/boosts. Writes require root."""
 
     def __init__(self) -> None:
+        # Each part is probed on its own; whatever is missing is reported
+        # (`missing`) and left out of the capabilities rather than fatal.
+        self.missing: list[str] = []
         self.hwmon = paths.find_hwmon()
         if self.hwmon is None:
-            raise UnsupportedHardware(
-                "the alienware-wmi driver exposes no hwmon on this machine "
-                "(no fan or temperature sensors). Cryo cannot run without it; "
-                "very old models (pre-2012 Aurora/Area-51, pre-ELC laptops) are "
-                "not covered by the driver."
+            self.missing.append(
+                "alienware-wmi hwmon (fan RPM, temperatures, fan boost) — the "
+                "driver does not cover this model's thermals"
             )
-        self.fans = self._discover_fans()
-        self.temps = self._discover_temps()  # {"cpu": index, "gpu": index}
+            self.fans: list[Fan] = []
+            self.temps: dict[str, int] = {}
+        else:
+            self.fans = self._discover_fans()
+            self.temps = self._discover_temps()  # {"cpu": index, "gpu": index}
         # Per-handler node when available — the legacy aggregate rejects
         # writing "custom" on kernel 6.14+ (see paths.find_platform_profile).
         self.profile_path, self.profile_choices_path = paths.find_platform_profile()
         try:
             self._build_profile_maps()
         except OSError as exc:
-            raise UnsupportedHardware(
-                f"platform profiles are unreadable ({exc}); the alienware-wmi "
-                "driver does not offer power modes on this machine."
-            ) from exc
-        self.boost_ok = self._probe_boost()
+            self.missing.append(f"platform profiles / power modes (choices unreadable: {exc})")
+            self.has_gmode = False
+            self.profile_to_kernel = {}
+            self.kernel_to_profile = {}
+        self.boost_ok = self._probe_boost() if self.hwmon is not None else False
         self.ac_path = paths.find_ac_supply()
         self.turbo_control = paths.find_turbo_control()
         self.cap_path = paths.find_cpu_cap()
+        for reason in self.missing:
+            log.warning("running without %s", reason)
 
     # -- discovery ---------------------------------------------------------
 
@@ -131,9 +139,18 @@ class ThermalController:
     def _read_int(self, path: Path) -> int:
         return int(path.read_text().strip())
 
+    @property
+    def has_thermals(self) -> bool:
+        """Fans/temps available (the driver's hwmon exists)."""
+        return self.hwmon is not None
+
+    @property
+    def has_profiles(self) -> bool:
+        return bool(self.profile_to_kernel)
+
     def temp(self, which: str) -> float | None:
         idx = self.temps.get(which)
-        if idx is None:
+        if idx is None or self.hwmon is None:
             return None
         try:
             return self._read_int(self.hwmon / f"temp{idx}_input") / 1000.0
@@ -152,8 +169,15 @@ class ThermalController:
         except OSError:
             return 0
 
-    def profile(self) -> str:
-        raw = self.profile_path.read_text().strip()
+    def profile(self) -> str | None:
+        """Current Cryo profile name, or None when the machine has no
+        platform profiles at all."""
+        if not self.profile_to_kernel:
+            return None
+        try:
+            raw = self.profile_path.read_text().strip()
+        except OSError:
+            return None
         return self.kernel_to_profile.get(raw, raw)
 
     def profile_choices(self) -> list[str]:
@@ -190,6 +214,8 @@ class ThermalController:
     # -- writes (root) -----------------------------------------------------
 
     def set_profile(self, name: str) -> None:
+        if not self.profile_to_kernel:
+            raise RuntimeError("this machine exposes no platform profiles (power modes)")
         kernel = self.profile_to_kernel.get(name)
         if kernel is None:
             raise ValueError(
@@ -228,6 +254,7 @@ class ThermalController:
         """Static hardware capabilities, resolved once at daemon start."""
         return {
             "model": paths.dmi_model(),
+            "thermals": self.has_thermals,
             "profiles": self.profile_choices(),
             "gmode": self.has_gmode,
             "fan_boost": self.boost_ok,

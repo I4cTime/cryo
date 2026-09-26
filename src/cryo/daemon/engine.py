@@ -14,7 +14,7 @@ from typing import Callable
 from cryo.daemon import state as state_mod
 from cryo.daemon.gamesense import GameDetector, GpuSense
 from cryo.hw.effects import Effects
-from cryo.hw.thermal import ThermalController
+from cryo.hw.thermal import ThermalController, UnsupportedHardware
 
 log = logging.getLogger(__name__)
 
@@ -66,7 +66,27 @@ class Engine:
             "game_detection": self.gpu.available(),
         }
         log.info("Capabilities: %s", self.capabilities)
-        if not self.thermal.boost_ok:
+        drivable = (
+            self.thermal.has_thermals
+            or self.thermal.has_profiles
+            or self.capabilities["turbo"]
+            or self.capabilities["cpu_cap"]
+            or self.capabilities["lighting"]
+            or self.capabilities["game_detection"]
+        )
+        if not drivable:
+            raise UnsupportedHardware(
+                "no alienware-wmi hwmon, no platform profiles, no CPU turbo or "
+                "cap control, no AW-ELC lighting and no NVML — there is nothing "
+                "here for Cryo to drive."
+            )
+        if self.thermal.missing:
+            log.warning(
+                "LIMITED mode — %s. GPU telemetry, game detection, turbo, CPU "
+                "cap and lighting still run where present.",
+                "; ".join(self.thermal.missing),
+            )
+        if self.thermal.has_thermals and not self.thermal.boost_ok:
             log.warning(
                 "fan boost unsupported on this model — curves and thermal "
                 "guard cannot actuate and are disabled"
@@ -177,11 +197,10 @@ class Engine:
         if not cap.get("enabled", True):
             return None
         if profile is None:
-            try:
-                profile = self.thermal.profile()
-            except OSError:
-                return None
-        return int(cap.get("profiles", {}).get(profile, 100))
+            profile = self.thermal.profile()
+        # Machines without power modes use the single "default" entry.
+        key = profile if profile is not None else "default"
+        return int(cap.get("profiles", {}).get(key, 100))
 
     def apply_cpu_cap(self, profile: str | None = None) -> int | None:
         """Write the cap for `profile` (default: current) if it differs."""
@@ -226,6 +245,8 @@ class Engine:
         return None
 
     def toggle_gmode(self) -> str:
+        if not self.thermal.has_profiles:
+            raise RuntimeError("this machine exposes no platform profiles (power modes)")
         boost_profile = "gmode" if self.thermal.has_gmode else "performance"
         current = self.thermal.profile()
         if current == boost_profile:

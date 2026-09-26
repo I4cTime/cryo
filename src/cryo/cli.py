@@ -49,19 +49,25 @@ cryoctl — Cryo control CLI
 def verdict(facts: dict) -> tuple[str, list[str]]:
     """Classify a machine from doctor's findings.
 
-    unsupported — nothing for cryod to drive (no hwmon, or no readable
-                  platform profiles): the daemon refuses to start.
-    partial     — the daemon runs, but listed features are missing.
     supported   — everything Cryo knows how to do is available.
+    partial     — the daemon runs with full thermals; listed extras missing.
+    limited     — no hwmon and/or no platform profiles: fans, curves, the
+                  guard and power modes are out, but the daemon still runs
+                  what exists (GPU telemetry, game detection, turbo, CPU
+                  cap, lighting).
+    unsupported — nothing at all to drive: cryod refuses to start.
     """
-    blockers: list[str] = []
+    core: list[str] = []
     if not facts.get("hwmon"):
-        blockers.append("no alienware-wmi hwmon (fans/temps)")
+        core.append("fans, temperatures, curves and Thermal Guard (no alienware-wmi hwmon)")
     if not facts.get("profiles"):
-        blockers.append("no readable platform profiles (power modes)")
-    if blockers:
-        return "unsupported", blockers
-    missing: list[str] = []
+        core.append("power modes (no readable platform profiles)")
+    extras_present = any(
+        facts.get(k) for k in ("turbo", "cpu_cap", "elc", "nvml")
+    )
+    if core and not extras_present:
+        return "unsupported", core + ["and no turbo, CPU cap, lighting or NVML to fall back on"]
+    missing: list[str] = list(core)
     if not facts.get("fan_boost"):
         missing.append("fan boost (curves, manual boost, Thermal Guard)")
     if not facts.get("elc"):
@@ -74,6 +80,8 @@ def verdict(facts: dict) -> tuple[str, list[str]]:
         missing.append("CPU turbo toggle")
     if not facts.get("cpu_cap"):
         missing.append("CPU performance cap (no intel_pstate max_perf_pct)")
+    if core:
+        return "limited", missing
     return ("partial", missing) if missing else ("supported", [])
 
 
@@ -174,6 +182,8 @@ def doctor() -> None:
         add("verdict", "SUPPORTED — everything Cryo does is available here")
     elif level == "partial":
         add("verdict", "PARTIAL — cryod runs; unavailable: " + "; ".join(reasons))
+    elif level == "limited":
+        add("verdict", "LIMITED — cryod runs what exists; unavailable: " + "; ".join(reasons))
     else:
         add("verdict", "UNSUPPORTED — " + "; ".join(reasons))
         add("", "cryod will not start on this machine.")
@@ -196,7 +206,7 @@ def fmt_status(st: dict) -> str:
     flags = " ".join(
         name for name, on in (("GAMING", st.get("gaming")), ("GUARD", st.get("guard"))) if on
     )
-    add("profile", str(st.get("profile", "?")) + (f"   [{flags}]" if flags else ""))
+    add("profile", str(st.get("profile") or "n/a") + (f"   [{flags}]" if flags else ""))
 
     for group in ("cpu", "gpu"):
         temp = st.get(f"{group}_temp")

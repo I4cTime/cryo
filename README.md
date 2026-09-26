@@ -130,7 +130,12 @@ driver is missing, so starting before the driver loads is fine.
 - Fan boost is not implemented by every model's firmware; when the
   startup probe finds it missing, curves and the Thermal Guard disable
   themselves visibly rather than failing silently.
-- On a machine the alienware-wmi driver doesn't cover (no hwmon, no
-  platform profiles — typically pre-2012 desktops), `cryod` logs one
-  plain-language reason, exits with status 78 and is not restarted;
-  `cryoctl doctor` gives the same verdict without the daemon.
+- On a machine the alienware-wmi driver only partly covers (no hwmon
+  and/or no platform profiles — typically pre-2012 desktops), `cryod`
+  runs in **limited mode**: fans, curves, the guard and power modes are
+  out, but GPU telemetry, game detection, the turbo toggle, the CPU cap
+  and lighting still work where present, and every client hides the
+  rest. Only a machine with nothing at all to drive makes `cryod` log one
+  plain-language reason and exit 78 without restarting. `cryoctl doctor`
+  gives the same SUPPORTED / PARTIAL / LIMITED / UNSUPPORTED verdict
+  without the daemon.

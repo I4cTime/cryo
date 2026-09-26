@@ -96,7 +96,7 @@ class Server:
             case "set_cpu_cap":
                 # Per-profile ceiling; defaults to the profile that is active
                 # right now so `cryoctl cap 90` does the obvious thing.
-                profile = req.get("profile") or engine.thermal.profile()
+                profile = req.get("profile") or engine.thermal.profile() or "default"
                 pct = int(req["pct"])
                 self.apply_patch({"cpu_cap": {"profiles": {profile: pct}}})
                 return {"ok": True, "profile": profile, "pct": pct}

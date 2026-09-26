@@ -37,19 +37,18 @@ def main() -> None:
     except UnsupportedHardware as exc:
         log.error("Cryo can't run on this machine: %s", exc)
         log.error(
-            "Run `cryoctl doctor` for the full verdict and see %s for what "
-            "Cryo needs (the mainline alienware-wmi driver with hwmon + "
-            "platform profiles). Not restarting.",
+            "Run `cryoctl doctor` for the full verdict and see %s. Not restarting.",
             COMPATIBILITY_URL,
         )
         sys.exit(EXIT_UNSUPPORTED)
     server = Server(engine, overrides)
     log.info(
-        "Cryo daemon up — profile=%s fans=%d curves=%s auto=%s",
-        engine.thermal.profile(),
+        "Cryo daemon up — profile=%s fans=%d curves=%s auto=%s%s",
+        engine.thermal.profile() or "n/a",
         len(engine.thermal.fans),
         cfg["fan_curves"]["enabled"],
         cfg["auto"]["enabled"],
+        " (LIMITED)" if engine.thermal.missing else "",
     )
     try:
         asyncio.run(server.run())

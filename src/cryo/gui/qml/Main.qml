@@ -280,6 +280,77 @@ ApplicationWindow {
             Item { Layout.fillWidth: true }
             Text { text: "°C → boost %"; color: root.muted; font.pixelSize: 11 }
         }
+
+        // The curve as a chart: temperature 30-110 °C across, boost 0-100 %
+        // up, the daemon's live temperature as a marker. Repaints whenever
+        // a point is edited so the numbers below and the line agree.
+        Canvas {
+            id: chart
+            Layout.fillWidth: true
+            Layout.preferredHeight: 120
+            readonly property real tLo: 30
+            readonly property real tHi: 110
+            readonly property real liveTemp: editor.group === "gpu" ? daemon.gpuTemp : daemon.cpuTemp
+            function px(t) { return 28 + (Math.min(Math.max(t, tLo), tHi) - tLo) / (tHi - tLo) * (width - 36) }
+            function py(b) { return 8 + (1 - Math.min(Math.max(b, 0), 100) / 100) * (height - 26) }
+            onPaint: {
+                const ctx = getContext("2d")
+                ctx.reset()
+                // grid
+                ctx.strokeStyle = "#141A26"; ctx.lineWidth = 1
+                ctx.fillStyle = root.muted; ctx.font = "9px sans-serif"
+                for (const b of [0, 50, 100]) {
+                    ctx.beginPath(); ctx.moveTo(px(tLo), py(b)); ctx.lineTo(px(tHi), py(b)); ctx.stroke()
+                    ctx.fillText(b + "%", 2, py(b) + 3)
+                }
+                for (const t of [40, 60, 80, 100]) {
+                    ctx.beginPath(); ctx.moveTo(px(t), py(0)); ctx.lineTo(px(t), py(100)); ctx.stroke()
+                    ctx.fillText(t + "°", px(t) - 8, height - 4)
+                }
+                // curve
+                if (points.count === 0) return
+                ctx.strokeStyle = root.cyan; ctx.lineWidth = 2
+                ctx.beginPath()
+                const first = points.get(0), last = points.get(points.count - 1)
+                ctx.moveTo(px(tLo), py(first.boost))
+                for (let i = 0; i < points.count; i++) {
+                    const p = points.get(i)
+                    ctx.lineTo(px(p.temp), py(p.boost))
+                }
+                ctx.lineTo(px(tHi), py(last.boost))
+                ctx.stroke()
+                // fill under the curve
+                ctx.lineTo(px(tHi), py(0)); ctx.lineTo(px(tLo), py(0)); ctx.closePath()
+                ctx.fillStyle = Qt.alpha(root.cyan, 0.08); ctx.fill()
+                // points
+                for (let i = 0; i < points.count; i++) {
+                    const p = points.get(i)
+                    ctx.beginPath(); ctx.arc(px(p.temp), py(p.boost), 4, 0, Math.PI * 2)
+                    ctx.fillStyle = root.fg; ctx.fill()
+                    ctx.strokeStyle = root.cyan; ctx.lineWidth = 2; ctx.stroke()
+                }
+                // live temperature marker
+                if (liveTemp > 0) {
+                    ctx.strokeStyle = "#FF5470"; ctx.lineWidth = 1
+                    ctx.setLineDash([3, 3])
+                    ctx.beginPath(); ctx.moveTo(px(liveTemp), py(0)); ctx.lineTo(px(liveTemp), py(100)); ctx.stroke()
+                    ctx.setLineDash([])
+                    ctx.fillStyle = "#FF5470"
+                    ctx.fillText(liveTemp.toFixed(0) + "°", px(liveTemp) + 3, py(100) + 9)
+                }
+            }
+            Connections {
+                target: points
+                function onDataChanged() { chart.requestPaint() }
+                function onRowsInserted() { chart.requestPaint() }
+                function onRowsRemoved() { chart.requestPaint() }
+                function onModelReset() { chart.requestPaint() }
+            }
+            Connections {
+                target: daemon
+                function onTelemetryChanged() { chart.requestPaint() }
+            }
+        }
         Repeater {
             model: points
             delegate: RowLayout {
@@ -476,7 +547,7 @@ ApplicationWindow {
 
             // Power modes — rendered from the daemon's capability list, so
             // Legacy-profile or no-G-Mode machines see exactly what exists.
-            SectionTitle { text: "POWER MODES" }
+            SectionTitle { text: "POWER MODES"; visible: daemon.hasProfiles }
             GridLayout {
                 Layout.fillWidth: true
                 columns: 3
@@ -495,6 +566,25 @@ ApplicationWindow {
             }
 
             // Telemetry
+            Panel {
+                Layout.fillWidth: true
+                visible: !daemon.hasThermals || !daemon.hasProfiles
+                implicitHeight: limitedText.height + 24
+                border.color: "#FFB300"
+                Text {
+                    id: limitedText
+                    x: 14; y: 12
+                    width: parent.width - 28
+                    wrapMode: Text.WordWrap
+                    color: "#FFB300"
+                    font.pixelSize: 11
+                    text: "Limited mode — the alienware-wmi driver doesn't expose "
+                          + (!daemon.hasThermals && !daemon.hasProfiles ? "fans, temperatures or power modes"
+                             : !daemon.hasThermals ? "fans or temperatures" : "power modes")
+                          + " on this machine. Everything shown below still works. See cryoctl doctor."
+                }
+            }
+
             SectionTitle { text: "TELEMETRY" }
             RowLayout {
                 Layout.fillWidth: true
@@ -633,9 +723,10 @@ ApplicationWindow {
             }
 
             // Fan control
-            SectionTitle { text: "FAN CONTROL" }
+            SectionTitle { text: "FAN CONTROL"; visible: daemon.hasThermals }
             Panel {
                 Layout.fillWidth: true
+                visible: daemon.hasThermals
                 implicitHeight: fanColumn.height + 28
                 ColumnLayout {
                     id: fanColumn
@@ -831,7 +922,7 @@ ApplicationWindow {
                         enabled: capSwitch.checked
                         opacity: enabled ? 1.0 : 0.4
                         Text {
-                            text: root.profileLabels[daemon.profile] || daemon.profile
+                            text: daemon.hasProfiles ? (root.profileLabels[daemon.profile] || daemon.profile) : "Default"
                             color: root.muted
                             font.pixelSize: 12
                             Layout.preferredWidth: 90
