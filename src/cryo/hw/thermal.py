@@ -28,6 +28,18 @@ from cryo import paths
 
 log = logging.getLogger(__name__)
 
+COMPATIBILITY_URL = "https://github.com/I4cTime/cryo/blob/main/docs/COMPATIBILITY.md"
+
+
+class UnsupportedHardware(RuntimeError):
+    """Nothing on this machine for Cryo to drive at all.
+
+    Raised at startup with a plain-language reason; cryod turns it into a
+    clear log line + exit status instead of a traceback and a restart loop.
+    Missing *parts* (no hwmon, no profiles) do not raise: the controller
+    degrades and the capability block tells clients what exists.
+    """
+
 
 @dataclass
 class Fan:
@@ -40,20 +52,37 @@ class ThermalController:
     """Reads temps/RPM and writes profiles/boosts. Writes require root."""
 
     def __init__(self) -> None:
+        # Each part is probed on its own; whatever is missing is reported
+        # (`missing`) and left out of the capabilities rather than fatal.
+        self.missing: list[str] = []
         self.hwmon = paths.find_hwmon()
         if self.hwmon is None:
-            raise RuntimeError(
-                "alienware_wmi hwmon not found — is the alienware-wmi driver loaded?"
+            self.missing.append(
+                "alienware-wmi hwmon (fan RPM, temperatures, fan boost) — the "
+                "driver does not cover this model's thermals"
             )
-        self.fans = self._discover_fans()
-        self.temps = self._discover_temps()  # {"cpu": index, "gpu": index}
+            self.fans: list[Fan] = []
+            self.temps: dict[str, int] = {}
+        else:
+            self.fans = self._discover_fans()
+            self.temps = self._discover_temps()  # {"cpu": index, "gpu": index}
         # Per-handler node when available — the legacy aggregate rejects
         # writing "custom" on kernel 6.14+ (see paths.find_platform_profile).
         self.profile_path, self.profile_choices_path = paths.find_platform_profile()
-        self._build_profile_maps()
-        self.boost_ok = self._probe_boost()
+        try:
+            self._build_profile_maps()
+        except OSError as exc:
+            self.missing.append(f"platform profiles / power modes (choices unreadable: {exc})")
+            self.has_gmode = False
+            self.profile_to_kernel = {}
+            self.kernel_to_profile = {}
+        self.boost_ok = self._probe_boost() if self.hwmon is not None else False
         self.ac_path = paths.find_ac_supply()
         self.turbo_control = paths.find_turbo_control()
+        self.cap_path = paths.find_cpu_cap()
+        self.cpu_max_mhz = (paths.cpu_max_khz() or 0) // 1000 or None
+        for reason in self.missing:
+            log.warning("running without %s", reason)
 
     # -- discovery ---------------------------------------------------------
 
@@ -111,9 +140,18 @@ class ThermalController:
     def _read_int(self, path: Path) -> int:
         return int(path.read_text().strip())
 
+    @property
+    def has_thermals(self) -> bool:
+        """Fans/temps available (the driver's hwmon exists)."""
+        return self.hwmon is not None
+
+    @property
+    def has_profiles(self) -> bool:
+        return bool(self.profile_to_kernel)
+
     def temp(self, which: str) -> float | None:
         idx = self.temps.get(which)
-        if idx is None:
+        if idx is None or self.hwmon is None:
             return None
         try:
             return self._read_int(self.hwmon / f"temp{idx}_input") / 1000.0
@@ -132,8 +170,15 @@ class ThermalController:
         except OSError:
             return 0
 
-    def profile(self) -> str:
-        raw = self.profile_path.read_text().strip()
+    def profile(self) -> str | None:
+        """Current Cryo profile name, or None when the machine has no
+        platform profiles at all."""
+        if not self.profile_to_kernel:
+            return None
+        try:
+            raw = self.profile_path.read_text().strip()
+        except OSError:
+            return None
         return self.kernel_to_profile.get(raw, raw)
 
     def profile_choices(self) -> list[str]:
@@ -150,6 +195,15 @@ class ThermalController:
             return None
         return raw == 0 if inverted else raw == 1
 
+    def cpu_cap(self) -> int | None:
+        """Current max_perf_pct, or None when the machine has no cap knob."""
+        if self.cap_path is None:
+            return None
+        try:
+            return self._read_int(self.cap_path)
+        except OSError:
+            return None
+
     def ac_online(self) -> bool:
         if self.ac_path is None:
             return True
@@ -161,6 +215,8 @@ class ThermalController:
     # -- writes (root) -----------------------------------------------------
 
     def set_profile(self, name: str) -> None:
+        if not self.profile_to_kernel:
+            raise RuntimeError("this machine exposes no platform profiles (power modes)")
         kernel = self.profile_to_kernel.get(name)
         if kernel is None:
             raise ValueError(
@@ -178,6 +234,13 @@ class ThermalController:
             if fan.group == group:
                 (self.hwmon / f"fan{fan.index}_boost").write_text(str(value))
 
+    def set_cpu_cap(self, pct: int) -> None:
+        """Write max_perf_pct (10-100). 100 = no cap."""
+        if self.cap_path is None:
+            raise RuntimeError("no CPU performance cap control on this machine")
+        pct = max(10, min(100, int(pct)))
+        self.cap_path.write_text(str(pct))
+
     def set_turbo(self, enabled: bool) -> None:
         if self.turbo_control is None:
             raise RuntimeError("no CPU turbo control found on this machine")
@@ -192,18 +255,24 @@ class ThermalController:
         """Static hardware capabilities, resolved once at daemon start."""
         return {
             "model": paths.dmi_model(),
+            "thermals": self.has_thermals,
             "profiles": self.profile_choices(),
             "gmode": self.has_gmode,
             "fan_boost": self.boost_ok,
             "fan_groups": sorted({f.group for f in self.fans}),
             "turbo": self.turbo_control is not None,
             "ac_supply": self.ac_path is not None,
+            "cpu_cap": self.cap_path is not None,
+            # Top CPU frequency (MHz) so a cap percentage can be shown in GHz
+            # for this machine; None when cpufreq doesn't say.
+            "cpu_max_mhz": self.cpu_max_mhz,
         }
 
     def telemetry(self) -> dict:
         return {
             "profile": self.profile(),
             "turbo": self.turbo(),
+            "cpu_cap": self.cpu_cap(),
             "ac": self.ac_online(),
             "cpu_temp": self.temp("cpu"),
             "gpu_temp": self.temp("gpu"),

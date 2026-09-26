@@ -2,9 +2,10 @@
 over defaults so a partial file is always valid.
 
 The file holds *overrides only*. The daemon reads it at startup and, when
-the GUI or `set_config` changes something, writes the updated overrides
-back — never the merged result, so defaults added in later releases keep
-applying to keys the user never touched.
+the GUI, `cryoctl curve/guard/cap` or a raw `set_config` changes something,
+writes the updated overrides back — never the merged result, so defaults
+added in later releases keep applying to keys the user never touched.
+Every patch is validated (`validate_patch`) before it is merged or saved.
 """
 
 from __future__ import annotations
@@ -78,7 +79,136 @@ DEFAULTS: dict = {
         "restore": True,
         "last": {"effect": "quantum", "color": "00D1FF", "brightness": 60},
     },
+    "cpu_cap": {
+        # Per-profile ceiling for the CPU's performance state, written to
+        # intel_pstate/max_perf_pct on every profile change (and re-asserted
+        # after resume). A profile missing from `profiles` means 100 = no
+        # cap. On an m18 R2, 90 ≈ 5.2 GHz single-core: about 12 W and 9 °C
+        # off the in-game peak for a couple of percent of CPU headroom.
+        # `enabled: false` makes Cryo leave the knob alone entirely.
+        "enabled": True,
+        "profiles": {},
+    },
 }
+
+# Bounds for the editable keys (GUI editor, cryoctl curve/guard/cap).
+CURVE_POINTS_MIN = 2
+CURVE_POINTS_MAX = 8
+CURVE_TEMP_RANGE = (0, 110)
+HYSTERESIS_RANGE = (0.0, 15.0)
+MIN_STEP_RANGE = (1, 25)
+GUARD_TRIP_RANGE = (60, 105)
+GUARD_RELEASE_RANGE = (1, 30)
+GUARD_HOLD_RANGE = (0, 600)
+CPU_CAP_RANGE = (10, 100)
+
+
+class PatchError(ValueError):
+    """A `set_config` patch failed validation (message is user-facing)."""
+
+
+def _number(value, label: str, lo, hi, integer: bool = False):
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise PatchError(f"{label} must be a number")
+    if integer and int(value) != value:
+        raise PatchError(f"{label} must be a whole number")
+    if not lo <= value <= hi:
+        raise PatchError(f"{label} must be between {lo} and {hi}")
+    return int(value) if integer else float(value)
+
+
+def validate_curve(points, label: str) -> list[list[int]]:
+    """A curve is 2-8 [temp_c, boost_pct] points with strictly rising temps
+    and non-decreasing boosts."""
+    if not isinstance(points, list):
+        raise PatchError(f"{label} must be a list of [temp, boost] points")
+    if not CURVE_POINTS_MIN <= len(points) <= CURVE_POINTS_MAX:
+        raise PatchError(
+            f"{label} needs {CURVE_POINTS_MIN}-{CURVE_POINTS_MAX} points, got {len(points)}"
+        )
+    out: list[list[int]] = []
+    for i, point in enumerate(points):
+        if not isinstance(point, (list, tuple)) or len(point) != 2:
+            raise PatchError(f"{label} point {i + 1} must be [temp, boost]")
+        temp = _number(point[0], f"{label} point {i + 1} temp", *CURVE_TEMP_RANGE, integer=True)
+        boost = _number(point[1], f"{label} point {i + 1} boost", 0, 100, integer=True)
+        if out and temp <= out[-1][0]:
+            raise PatchError(f"{label} temperatures must rise from point to point")
+        if out and boost < out[-1][1]:
+            raise PatchError(f"{label} boosts must not decrease as temperature rises")
+        out.append([temp, boost])
+    return out
+
+
+def validate_patch(patch: dict) -> dict:
+    """Check the keys Cryo's editors write; return a normalized copy.
+
+    Keys this doesn't know about pass through untouched (the config file
+    is the user's), but anything the daemon actuates from must be sane —
+    a curve with falling temperatures or a 5% CPU cap would otherwise be
+    written to sysfs verbatim.
+    """
+    if not isinstance(patch, dict):
+        raise PatchError("patch must be an object")
+    out = copy.deepcopy(patch)
+
+    curves = out.get("fan_curves")
+    if curves is not None:
+        if not isinstance(curves, dict):
+            raise PatchError("fan_curves must be an object")
+        for group in ("cpu", "gpu"):
+            if group in curves:
+                curves[group] = validate_curve(curves[group], f"fan_curves.{group}")
+        if "hysteresis_c" in curves:
+            curves["hysteresis_c"] = _number(
+                curves["hysteresis_c"], "fan_curves.hysteresis_c", *HYSTERESIS_RANGE
+            )
+        if "min_step" in curves:
+            curves["min_step"] = _number(
+                curves["min_step"], "fan_curves.min_step", *MIN_STEP_RANGE, integer=True
+            )
+        if "enabled" in curves and not isinstance(curves["enabled"], bool):
+            raise PatchError("fan_curves.enabled must be true or false")
+
+    guard = out.get("thermal_guard")
+    if guard is not None:
+        if not isinstance(guard, dict):
+            raise PatchError("thermal_guard must be an object")
+        for key in ("cpu_trip", "gpu_trip"):
+            if key in guard:
+                guard[key] = _number(guard[key], f"thermal_guard.{key}", *GUARD_TRIP_RANGE, integer=True)
+        if "release_c" in guard:
+            guard["release_c"] = _number(
+                guard["release_c"], "thermal_guard.release_c", *GUARD_RELEASE_RANGE, integer=True
+            )
+        if "min_hold_s" in guard:
+            guard["min_hold_s"] = _number(
+                guard["min_hold_s"], "thermal_guard.min_hold_s", *GUARD_HOLD_RANGE, integer=True
+            )
+        if "boost" in guard:
+            guard["boost"] = _number(guard["boost"], "thermal_guard.boost", 0, 100, integer=True)
+        if "enabled" in guard and not isinstance(guard["enabled"], bool):
+            raise PatchError("thermal_guard.enabled must be true or false")
+
+    cap = out.get("cpu_cap")
+    if cap is not None:
+        if not isinstance(cap, dict):
+            raise PatchError("cpu_cap must be an object")
+        if "enabled" in cap and not isinstance(cap["enabled"], bool):
+            raise PatchError("cpu_cap.enabled must be true or false")
+        profiles = cap.get("profiles")
+        if profiles is not None:
+            if not isinstance(profiles, dict):
+                raise PatchError("cpu_cap.profiles must map profile names to percentages")
+            cap["profiles"] = {
+                str(name).lower(): _number(pct, f"cpu_cap.profiles.{name}", *CPU_CAP_RANGE, integer=True)
+                for name, pct in profiles.items()
+            }
+
+    auto = out.get("auto")
+    if auto is not None and not isinstance(auto, dict):
+        raise PatchError("auto must be an object")
+    return out
 
 
 def _merge(base: dict, override: dict) -> dict:

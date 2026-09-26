@@ -92,21 +92,38 @@ class Server:
             case "get_config":
                 return {"ok": True, "config": engine.config, "overrides": self.overrides}
             case "set_config":
-                patch = req["patch"]
-                if not isinstance(patch, dict):
-                    raise ValueError("patch must be an object")
-                self.overrides = config_mod._merge(self.overrides, patch)
-                engine.config = config_mod.merged(self.overrides)
-                engine.detector.configure(engine.config["auto"])
-                if "enabled" in patch.get("fan_curves", {}):
-                    # An explicit curves switch overrides the manual-boost latch.
-                    engine.latch_curves(None)
-                config_mod.save_overrides(self.overrides)
-                return {"ok": True, "config": engine.config}
+                return {"ok": True, "config": self.apply_patch(req["patch"])}
+            case "set_cpu_cap":
+                # Per-profile ceiling; defaults to the profile that is active
+                # right now so `cryoctl cap 90` does the obvious thing.
+                profile = req.get("profile") or engine.thermal.profile() or "default"
+                pct = int(req["pct"])
+                self.apply_patch({"cpu_cap": {"profiles": {profile: pct}}})
+                return {"ok": True, "profile": profile, "pct": pct}
             case "reapply":
                 return {"ok": True, **engine.reapply()}
             case unknown:
                 return {"ok": False, "error": f"unknown op {unknown!r}"}
+
+    def apply_patch(self, patch: dict) -> dict:
+        """Validate, merge into the overrides, persist, and re-arm whatever
+        the patch touched. Returns the new effective config."""
+        engine = self.engine
+        patch = config_mod.validate_patch(patch)
+        self.overrides = config_mod._merge(self.overrides, patch)
+        engine.config = config_mod.merged(self.overrides)
+        engine.detector.configure(engine.config["auto"])
+        if "enabled" in patch.get("fan_curves", {}):
+            # An explicit curves switch overrides the manual-boost latch.
+            engine.latch_curves(None)
+        config_mod.save_overrides(self.overrides)
+        if "cpu_cap" in patch:
+            engine.apply_cpu_cap()
+        if "fan_curves" in patch or "thermal_guard" in patch:
+            # New points/thresholds: forget the old anchors so the next tick
+            # re-evaluates from scratch instead of sitting in a dead zone.
+            engine.reset_curve_state()
+        return engine.config
 
     # -- telemetry fanout --------------------------------------------------
 

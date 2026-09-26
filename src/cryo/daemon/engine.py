@@ -14,7 +14,7 @@ from typing import Callable
 from cryo.daemon import state as state_mod
 from cryo.daemon.gamesense import GameDetector, GpuSense
 from cryo.hw.effects import Effects
-from cryo.hw.thermal import ThermalController
+from cryo.hw.thermal import ThermalController, UnsupportedHardware
 
 log = logging.getLogger(__name__)
 
@@ -66,7 +66,27 @@ class Engine:
             "game_detection": self.gpu.available(),
         }
         log.info("Capabilities: %s", self.capabilities)
-        if not self.thermal.boost_ok:
+        drivable = (
+            self.thermal.has_thermals
+            or self.thermal.has_profiles
+            or self.capabilities["turbo"]
+            or self.capabilities["cpu_cap"]
+            or self.capabilities["lighting"]
+            or self.capabilities["game_detection"]
+        )
+        if not drivable:
+            raise UnsupportedHardware(
+                "no alienware-wmi hwmon, no platform profiles, no CPU turbo or "
+                "cap control, no AW-ELC lighting and no NVML — there is nothing "
+                "here for Cryo to drive."
+            )
+        if self.thermal.missing:
+            log.warning(
+                "LIMITED mode — %s. GPU telemetry, game detection, turbo, CPU "
+                "cap and lighting still run where present.",
+                "; ".join(self.thermal.missing),
+            )
+        if self.thermal.has_thermals and not self.thermal.boost_ok:
             log.warning(
                 "fan boost unsupported on this model — curves and thermal "
                 "guard cannot actuate and are disabled"
@@ -74,6 +94,7 @@ class Engine:
 
         if config["lighting"]["restore"]:
             self.restore_lighting()
+        self.apply_cpu_cap()
 
     # -- state -------------------------------------------------------------
 
@@ -93,6 +114,10 @@ class Engine:
         if latched is None:
             return bool(self.config["fan_curves"]["enabled"])
         return bool(latched)
+
+    def reset_curve_state(self) -> None:
+        self._curve_anchor.clear()
+        self._curve_boost.clear()
 
     def latch_curves(self, enabled: bool | None) -> None:
         """None clears the latch (follow config again)."""
@@ -154,11 +179,41 @@ class Engine:
             log.warning("profile re-apply failed: %s", exc)
             result["profile"] = None
         result["nvml"] = self.gpu.reinit()
+        result["cpu_cap"] = self.apply_cpu_cap()
         self.capabilities["game_detection"] = self.gpu.available()
         self._curve_anchor.clear()
         self._curve_boost.clear()
         log.info("Re-applied state after resume: %s", result)
         return result
+
+    # -- CPU performance cap ----------------------------------------------
+
+    def cpu_cap_target(self, profile: str | None = None) -> int | None:
+        """The max_perf_pct this profile should run at, or None to leave the
+        knob alone (no control on this machine, or the feature is off)."""
+        if not self.capabilities.get("cpu_cap"):
+            return None
+        cap = self.config.get("cpu_cap", {})
+        if not cap.get("enabled", True):
+            return None
+        if profile is None:
+            profile = self.thermal.profile()
+        # Machines without power modes use the single "default" entry.
+        key = profile if profile is not None else "default"
+        return int(cap.get("profiles", {}).get(key, 100))
+
+    def apply_cpu_cap(self, profile: str | None = None) -> int | None:
+        """Write the cap for `profile` (default: current) if it differs."""
+        target = self.cpu_cap_target(profile)
+        if target is None:
+            return None
+        try:
+            if self.thermal.cpu_cap() != target:
+                self.thermal.set_cpu_cap(target)
+                log.info("CPU cap -> %s%% (profile %s)", target, profile or "current")
+        except OSError as exc:
+            log.warning("CPU cap write failed: %s", exc)
+        return target
 
     # -- profile helpers ---------------------------------------------------
 
@@ -169,6 +224,7 @@ class Engine:
             self._curve_anchor.clear()
             self._curve_boost.clear()
         log.info("Profile -> %s", name)
+        self.apply_cpu_cap(name)
 
     def resolve_profile(self, name: str) -> str | None:
         """Map a configured profile name onto what this machine offers.
@@ -189,6 +245,8 @@ class Engine:
         return None
 
     def toggle_gmode(self) -> str:
+        if not self.thermal.has_profiles:
+            raise RuntimeError("this machine exposes no platform profiles (power modes)")
         boost_profile = "gmode" if self.thermal.has_gmode else "performance"
         current = self.thermal.profile()
         if current == boost_profile:
@@ -281,6 +339,7 @@ class Engine:
         # data path for everything the UI shows.
         telemetry["curves_enabled"] = curves_on
         telemetry["auto_enabled"] = auto["enabled"]
+        telemetry["cpu_cap_enabled"] = bool(self.config.get("cpu_cap", {}).get("enabled", True))
         telemetry["lighting"] = self.lighting_last()
         telemetry["capabilities"] = self.capabilities
 

@@ -10,6 +10,9 @@ Type=simple
 ExecStart=@PYTHON@ -m cryo.daemon.main
 Restart=on-failure
 RestartSec=3
+# 78 = unsupported hardware (see cryod's startup message): restarting
+# every 3 s would only repeat the verdict.
+RestartPreventExitStatus=78
 
 [Install]
 WantedBy=multi-user.target
