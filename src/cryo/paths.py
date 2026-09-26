@@ -124,7 +124,7 @@ def cpu_max_khz() -> int | None:
 
 def dmi_model() -> str:
     """Human-readable vendor + product from DMI, best effort."""
-    parts = []
+    parts: list[str] = []
     for field in ("sys_vendor", "product_name"):
         try:
             value = (DMI_ROOT / field).read_text().strip()
@@ -132,4 +132,8 @@ def dmi_model() -> str:
             continue
         if value:
             parts.append(value)
+    # Dell stamps the brand into both fields ("Alienware" + "Alienware m18
+    # R2"); don't print it twice.
+    if len(parts) == 2 and parts[1].lower().startswith(parts[0].lower()):
+        return parts[1]
     return " ".join(parts)

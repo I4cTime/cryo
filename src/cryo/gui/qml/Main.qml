@@ -329,6 +329,17 @@ ApplicationWindow {
                     ctx.fillStyle = root.fg; ctx.fill()
                     ctx.strokeStyle = root.cyan; ctx.lineWidth = 2; ctx.stroke()
                 }
+                // Thermal Guard trip for this group: the fans go to 100% past
+                // this line in every mode, whatever the curve says.
+                const trip = editor.group === "gpu" ? daemon.guardGpuTrip : daemon.guardCpuTrip
+                if (trip > tLo && trip < tHi) {
+                    ctx.strokeStyle = "#FFB300"; ctx.lineWidth = 1
+                    ctx.setLineDash([2, 4])
+                    ctx.beginPath(); ctx.moveTo(px(trip), py(0)); ctx.lineTo(px(trip), py(100)); ctx.stroke()
+                    ctx.setLineDash([])
+                    ctx.fillStyle = "#FFB300"
+                    ctx.fillText("guard " + trip + "°", px(trip) - 44, py(100) + 9)
+                }
                 // live temperature marker
                 if (liveTemp > 0) {
                     ctx.strokeStyle = "#FF5470"; ctx.lineWidth = 1
@@ -349,6 +360,7 @@ ApplicationWindow {
             Connections {
                 target: daemon
                 function onTelemetryChanged() { chart.requestPaint() }
+                function onConfigChanged() { chart.requestPaint() }
             }
         }
         Repeater {
@@ -735,10 +747,10 @@ ApplicationWindow {
                     spacing: 4
                     RowLayout {
                         Layout.fillWidth: true
-                        Text {
-                            text: "Fan curves (custom mode)"
-                            color: root.fg
-                            font.pixelSize: 13
+                        Column {
+                            spacing: 2
+                            Text { text: "Automatic fan curves"; color: root.fg; font.pixelSize: 13 }
+                            Text { text: "Off = manual boost sliders"; color: root.muted; font.pixelSize: 11 }
                         }
                         Item { Layout.fillWidth: true }
                         CryoSwitch {
@@ -752,18 +764,28 @@ ApplicationWindow {
                             onToggled: daemon.setCurvesEnabled(checked)
                         }
                     }
-                    Text {
-                        text: !daemon.hasBoost
-                              ? "Fan boost is not supported by this model's firmware — curves and manual boost are unavailable."
-                              : daemon.profile === "custom"
-                              ? (curvesSwitch.checked
-                                 ? "Curves active — boosts follow temperature."
-                                 : "Manual boost — drag sliders below.")
-                              : "Switch to Custom mode to control fans directly."
-                        color: daemon.hasBoost ? root.muted : "#FFB300"
-                        font.pixelSize: 11
+                    RowLayout {
                         Layout.fillWidth: true
-                        wrapMode: Text.WordWrap
+                        spacing: 10
+                        Text {
+                            text: !daemon.hasBoost
+                                  ? "Fan boost is not supported by this model's firmware — curves and manual boost are unavailable."
+                                  : daemon.profile === "custom"
+                                  ? (curvesSwitch.checked
+                                     ? "Curves active — boosts follow temperature."
+                                     : "Manual boost — drag the sliders.")
+                                  : "Fans follow the firmware in this mode. Custom mode hands them to Cryo."
+                            color: daemon.hasBoost ? root.muted : "#FFB300"
+                            font.pixelSize: 11
+                            Layout.fillWidth: true
+                            wrapMode: Text.WordWrap
+                        }
+                        CryoButton {
+                            label: "Use Custom mode"
+                            accent: true
+                            visible: daemon.hasBoost && daemon.hasProfiles && daemon.profile !== "custom"
+                            onClicked: daemon.setProfile("custom")
+                        }
                     }
                     RowLayout {
                         Layout.fillWidth: true
@@ -793,40 +815,32 @@ ApplicationWindow {
                         }
                         Text { text: Math.round(gpuBoost.value) + "%"; color: root.fg; font.pixelSize: 12; Layout.preferredWidth: 36 }
                     }
-                }
-            }
-
-            // Fan curve + guard editor (0.4.0)
-            SectionTitle { text: "FAN CURVES & GUARD"; visible: daemon.hasBoost }
-            Panel {
-                Layout.fillWidth: true
-                visible: daemon.hasBoost
-                implicitHeight: curveColumn.height + 28
-                ColumnLayout {
-                    id: curveColumn
-                    x: 14; y: 14
-                    width: parent.width - 28
-                    spacing: 10
+                    Rectangle { Layout.fillWidth: true; height: 1; color: root.panelBorder; Layout.topMargin: 6; visible: daemon.hasBoost }
                     RowLayout {
                         Layout.fillWidth: true
-                        Text { text: "Edit curves"; color: root.fg; font.pixelSize: 13 }
+                        visible: daemon.hasBoost
+                        Column {
+                            spacing: 2
+                            Text { text: "Curves & Thermal Guard"; color: root.fg; font.pixelSize: 13 }
+                            Text {
+                                text: curveBody.visible
+                                      ? "Points are °C → boost %. Curves apply in Custom mode; the guard trips in any mode."
+                                      : "Edit the curve points and the guard's trip temperatures."
+                                color: root.muted
+                                font.pixelSize: 11
+                            }
+                        }
                         Item { Layout.fillWidth: true }
                         CryoButton {
-                            label: curveBody.visible ? "Hide" : "Show"
+                            label: curveBody.visible ? "Done" : "Edit"
                             onClicked: curveBody.visible = !curveBody.visible
                         }
-                    }
-                    Text {
-                        text: "Points are °C → fan boost %; temperatures must rise, boosts must not fall. Applied in Custom mode; the Thermal Guard trips in any mode."
-                        color: root.muted
-                        font.pixelSize: 11
-                        Layout.fillWidth: true
-                        wrapMode: Text.WordWrap
                     }
                     ColumnLayout {
                         id: curveBody
                         objectName: "curveBody"
                         visible: false
+                        enabled: daemon.hasBoost
                         Layout.fillWidth: true
                         spacing: 12
                         CurveEditor { group: "cpu"; source: daemon.cpuCurve }
@@ -888,11 +902,11 @@ ApplicationWindow {
                 }
             }
 
-            // CPU performance cap (0.4.0)
-            SectionTitle { text: "CPU POWER CAP"; visible: daemon.hasCpuCap }
+            // CPU power: turbo toggle + per-mode performance cap (0.4.0)
+            SectionTitle { text: "CPU POWER"; visible: daemon.hasCpuCap || daemon.hasTurbo }
             Panel {
                 Layout.fillWidth: true
-                visible: daemon.hasCpuCap
+                visible: daemon.hasCpuCap || daemon.hasTurbo
                 implicitHeight: capColumn.height + 28
                 ColumnLayout {
                     id: capColumn
@@ -901,7 +915,43 @@ ApplicationWindow {
                     spacing: 4
                     RowLayout {
                         Layout.fillWidth: true
-                        Text { text: "Cap per power mode"; color: root.fg; font.pixelSize: 13 }
+                        visible: daemon.hasTurbo
+                        Column {
+                            spacing: 2
+                            Text { text: "Turbo Boost"; color: root.fg; font.pixelSize: 13 }
+                            Text { text: "Off pins every core at its base clock — quiet and cool, slower."; color: root.muted; font.pixelSize: 11 }
+                        }
+                        Item { Layout.fillWidth: true }
+                        CryoSwitch {
+                            checked: daemon.turbo
+                            Binding on checked { value: daemon.turbo }
+                            onToggled: daemon.setTurbo(checked)
+                        }
+                    }
+                    Rectangle { Layout.fillWidth: true; height: 1; color: root.panelBorder; visible: daemon.hasTurbo && daemon.hasCpuCap; Layout.topMargin: 4; Layout.bottomMargin: 4 }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        visible: daemon.hasCpuCap
+                        Column {
+                            spacing: 2
+                            Text { text: "Performance cap per mode"; color: root.fg; font.pixelSize: 13 }
+                            Text {
+                                // Every configured mode at a glance, so you don't have
+                                // to switch modes to see what each one is capped at.
+                                property var caps: daemon.cpuCapProfiles
+                                text: {
+                                    const parts = []
+                                    for (const name of daemon.profiles) {
+                                        const pct = caps[name]
+                                        if (pct !== undefined && pct < 100)
+                                            parts.push((root.profileLabels[name] || name) + " " + pct + "%")
+                                    }
+                                    return parts.length ? parts.join("  ·  ") : "No mode is capped yet — pick a mode, then drag."
+                                }
+                                color: root.muted
+                                font.pixelSize: 11
+                            }
+                        }
                         Item { Layout.fillWidth: true }
                         CryoSwitch {
                             id: capSwitch
@@ -913,7 +963,8 @@ ApplicationWindow {
                     Text {
                         // Machine-specific: the GHz figure comes from this
                         // CPU's cpufreq max, never from a fixed model.
-                        text: "Limits the CPU's top performance state (intel_pstate max_perf_pct), remembered per mode and re-applied on every switch. "
+                        visible: daemon.hasCpuCap
+                        text: "Caps the CPU's top performance state (intel_pstate max_perf_pct); remembered per mode, re-applied on every switch and after resume. "
                               + (daemon.cpuMaxMhz > 0
                                  ? "This CPU tops out at " + (daemon.cpuMaxMhz / 1000).toFixed(1) + " GHz; a lower cap trades a little single-core speed for less heat and power."
                                  : "A lower cap trades a little single-core speed for less heat and power.")
@@ -924,6 +975,7 @@ ApplicationWindow {
                     }
                     RowLayout {
                         Layout.fillWidth: true
+                        visible: daemon.hasCpuCap
                         enabled: capSwitch.checked
                         opacity: enabled ? 1.0 : 0.4
                         Text {
@@ -969,7 +1021,12 @@ ApplicationWindow {
                             spacing: 2
                             Text { text: "Auto profiles"; color: root.fg; font.pixelSize: 13 }
                             Text {
-                                text: "game → G-Mode · battery → Quiet · AC → Balanced"
+                                // From the daemon's config, not a fixed string.
+                                property var rules: daemon.autoRules
+                                function label(name) { return name ? (root.profileLabels[name] || name) : "—" }
+                                text: (daemon.hasGameSense ? "game → " + label(rules.on_game) + " · " : "")
+                                      + "battery → " + label(rules.on_battery)
+                                      + " · AC → " + label(rules.on_ac)
                                 color: root.muted
                                 font.pixelSize: 11
                             }
@@ -982,19 +1039,10 @@ ApplicationWindow {
                         }
                     }
                     RowLayout {
-                        Layout.fillWidth: true
-                        visible: daemon.hasTurbo
-                        Text { text: "CPU Turbo Boost"; color: root.fg; font.pixelSize: 13 }
-                        Item { Layout.fillWidth: true }
-                        CryoSwitch {
-                            checked: daemon.turbo
-                            onToggled: daemon.setTurbo(checked)
-                        }
-                    }
-                    RowLayout {
                         spacing: 6
                         Text {
-                            text: daemon.ac ? "⚡ AC power" : "🔋 On battery"
+                            text: (daemon.ac ? "⚡ On AC power" : "🔋 On battery")
+                                  + (daemon.gaming ? "  ·  🎮 game detected" : "")
                             color: root.muted
                             font.pixelSize: 11
                         }

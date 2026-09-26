@@ -287,6 +287,16 @@ class Daemon(QObject):
     def curveMinStep(self) -> int:
         return int(self._config.get("fan_curves", {}).get("min_step", 5))
 
+    @Property("QVariantMap", notify=configChanged)
+    def cpuCapProfiles(self) -> dict:
+        """Configured per-mode caps, e.g. {"performance": 90}."""
+        return dict(self._config.get("cpu_cap", {}).get("profiles", {}))
+
+    @Property("QVariantMap", notify=configChanged)
+    def autoRules(self) -> dict:
+        auto = self._config.get("auto", {})
+        return {k: auto.get(k) for k in ("on_game", "after_game", "on_battery", "on_ac")}
+
     @Property(int, notify=configChanged)
     def guardCpuTrip(self) -> int:
         return int(self._config.get("thermal_guard", {}).get("cpu_trip", 88))

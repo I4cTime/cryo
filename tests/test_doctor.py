@@ -49,3 +49,14 @@ def test_parse_curve_points():
     assert parse_curve_points(["45:0", "60:15", "95:100"]) == [[45, 0], [60, 15], [95, 100]]
     with pytest.raises(SystemExit):
         parse_curve_points(["45-0"])
+
+
+def test_dmi_model_drops_the_duplicated_brand(monkeypatch, tmp_path):
+    from cryo import paths
+
+    (tmp_path / "sys_vendor").write_text("Alienware\n")
+    (tmp_path / "product_name").write_text("Alienware m18 R2\n")
+    monkeypatch.setattr(paths, "DMI_ROOT", tmp_path)
+    assert paths.dmi_model() == "Alienware m18 R2"
+    (tmp_path / "product_name").write_text("Aurora R4\n")
+    assert paths.dmi_model() == "Alienware Aurora R4"
