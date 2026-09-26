@@ -17,6 +17,7 @@ only what exists.
 | Thermal Guard | fan boost (above) | Disabled (nothing to actuate) |
 | Auto profiles (AC/battery) | a `Mains`-type power supply in sysfs (name is discovered, not assumed) | Battery rules never fire; everything else works |
 | CPU Turbo toggle | `intel_pstate/no_turbo` or `cpufreq/boost` | Toggle hidden |
+| CPU power cap (per mode) | `intel_pstate/max_perf_pct` (Intel; amd_pstate has no global knob) | Cap card hidden, `cryoctl cap` reports it unavailable |
 | Game detection | NVIDIA proprietary driver (NVML) | Auto-G-Mode off; manual modes unaffected |
 | AlienFX lighting | AW-ELC USB controller `187c:0550/0551` (≈2020+ m/x-series keyboards) | Lighting section hidden |
 
@@ -37,11 +38,18 @@ builds this mapping from the kernel's advertised choices at startup.
 cryoctl doctor
 ```
 
-and open a [model report](../../issues/new?template=model-report.yml)
-with the output — working or not, both results grow this table.
+It ends with a verdict — **SUPPORTED**, **PARTIAL** (cryod runs; the
+listed features are missing), or **UNSUPPORTED** (no hwmon or no platform
+profiles, so cryod refuses to start with the same reason and exits 78
+without restarting). Open a
+[model report](../../issues/new?template=model-report.yml) with the
+output — working or not, both results grow this table.
 
 ## Known out of scope (for now)
 
 - AMD dGPU game detection (needs DRM fdinfo instead of NVML)
 - Pre-ELC lighting controllers (older AlienFX protocols, per-key RGB)
-- Aurora/Area-51 desktops (thermals may work; entirely untested)
+- Aurora/Area-51 desktops (thermals may work on models the driver
+  covers; entirely untested). Pre-2012 desktops (e.g. Aurora R4, USB
+  lighting id `187c:0513`) get no hwmon or profiles from alienware-wmi at
+  all and are unsupported — `cryoctl doctor` says so.

@@ -38,7 +38,11 @@ def make_server(overrides=None):
         detector=SimpleNamespace(configure=lambda cfg: None),
         latch_curves=lambda v: latch.__setitem__("value", v),
         curves_enabled=lambda: True,
-        thermal=SimpleNamespace(set_boost=lambda g, v: None),
+        thermal=SimpleNamespace(set_boost=lambda g, v: None, profile=lambda: "performance"),
+        # 0.4.0 hooks apply_patch re-arms after a curve/guard/cap patch
+        reset_curve_state=lambda: None,
+        apply_cpu_cap=lambda profile=None: applied.append(profile),
+        applied=(applied := []),
     )
     server = Server(engine, dict(overrides or {}))
     return server, engine, latch
@@ -79,3 +83,30 @@ def test_manual_boost_latches_curves_off_without_touching_config(monkeypatch):
     assert resp["ok"]
     assert latch["value"] is False
     assert engine.config["fan_curves"]["enabled"] is True  # config untouched
+
+
+# -- 0.4.0: validated patches + CPU cap op ---------------------------------
+
+def test_set_config_rejects_invalid_patch_and_keeps_overrides(monkeypatch):
+    import pytest
+
+    saved = []
+    monkeypatch.setattr(config_mod, "save_overrides", lambda o, path=None: saved.append(o))
+    server, engine, _ = make_server()
+    with pytest.raises(config_mod.PatchError):
+        server.dispatch({"op": "set_config", "patch": {"fan_curves": {"cpu": [[80, 50], [60, 10]]}}}, None)
+    assert saved == []
+    ok = server.dispatch({"op": "set_config", "patch": {"fan_curves": {"cpu": [[50, 0], [90, 100]]}}}, None)
+    assert ok["ok"] and ok["config"]["fan_curves"]["cpu"] == [[50, 0], [90, 100]]
+    assert saved[-1]["fan_curves"]["cpu"] == [[50, 0], [90, 100]]
+
+
+def test_set_cpu_cap_defaults_to_current_profile_and_reapplies(monkeypatch):
+    monkeypatch.setattr(config_mod, "save_overrides", lambda o, path=None: None)
+    server, engine, _ = make_server()
+    resp = server.dispatch({"op": "set_cpu_cap", "pct": 90}, None)
+    assert resp == {"ok": True, "profile": "performance", "pct": 90}
+    assert engine.config["cpu_cap"]["profiles"] == {"performance": 90}
+    assert engine.applied == [None]
+    server.dispatch({"op": "set_cpu_cap", "profile": "gmode", "pct": 95}, None)
+    assert engine.config["cpu_cap"]["profiles"] == {"performance": 90, "gmode": 95}

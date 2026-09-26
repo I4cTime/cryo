@@ -26,6 +26,7 @@ DEFAULT_CAPABILITIES: dict = {
     "ac_supply": True,
     "lighting": True,
     "game_detection": True,
+    "cpu_cap": False,
 }
 
 
@@ -33,6 +34,7 @@ class Daemon(QObject):
     telemetryChanged = Signal()
     connectedChanged = Signal()
     capabilitiesChanged = Signal()
+    configChanged = Signal()
     errorOccurred = Signal(str)
 
     def __init__(self, parent: QObject | None = None) -> None:
@@ -40,6 +42,10 @@ class Daemon(QObject):
         self._connected = False
         self._telemetry: dict = {}
         self._capabilities: dict = DEFAULT_CAPABILITIES
+        # Effective daemon config (curves, guard, cap) for the editors —
+        # fetched once per connection and refreshed from every set_config
+        # response, so the editor always shows what the daemon runs.
+        self._config: dict = {}
         self._cpu_history: list[float] = []
         self._gpu_history: list[float] = []
         self._vram_history: list[float] = []
@@ -76,6 +82,7 @@ class Daemon(QObject):
         self._reconnect.stop()
         self.connectedChanged.emit()
         self._stream.write(json.dumps({"op": "subscribe"}).encode() + b"\n")
+        self._command({"op": "get_config"})
 
     def _on_stream_disconnected(self) -> None:
         self._connected = False
@@ -122,6 +129,9 @@ class Daemon(QObject):
                 message = str(response.get("error", "unknown error"))
                 log.warning("daemon rejected command: %s", message)
                 self.errorOccurred.emit(message)
+            elif isinstance(response.get("config"), dict):
+                self._config = response["config"]
+                self.configChanged.emit()
 
     def _command(self, payload: dict) -> None:
         if self._cmd.state() != QLocalSocket.LocalSocketState.ConnectedState:
@@ -230,6 +240,50 @@ class Daemon(QObject):
     def modelName(self) -> str:
         return str(self._capabilities.get("model", ""))
 
+    @Property(bool, notify=capabilitiesChanged)
+    def hasCpuCap(self) -> bool:
+        return bool(self._capabilities.get("cpu_cap", False))
+
+    @Property(int, notify=telemetryChanged)
+    def cpuCap(self) -> int:
+        return int(self._telemetry.get("cpu_cap") or 100)
+
+    @Property(bool, notify=telemetryChanged)
+    def cpuCapEnabled(self) -> bool:
+        return bool(self._telemetry.get("cpu_cap_enabled", True))
+
+    @Property("QVariantMap", notify=configChanged)
+    def config(self) -> dict:
+        return self._config
+
+    @Property("QVariantList", notify=configChanged)
+    def cpuCurve(self) -> list:
+        return list(self._config.get("fan_curves", {}).get("cpu", []))
+
+    @Property("QVariantList", notify=configChanged)
+    def gpuCurve(self) -> list:
+        return list(self._config.get("fan_curves", {}).get("gpu", []))
+
+    @Property(float, notify=configChanged)
+    def curveHysteresis(self) -> float:
+        return float(self._config.get("fan_curves", {}).get("hysteresis_c", 3.0))
+
+    @Property(int, notify=configChanged)
+    def curveMinStep(self) -> int:
+        return int(self._config.get("fan_curves", {}).get("min_step", 5))
+
+    @Property(int, notify=configChanged)
+    def guardCpuTrip(self) -> int:
+        return int(self._config.get("thermal_guard", {}).get("cpu_trip", 88))
+
+    @Property(int, notify=configChanged)
+    def guardGpuTrip(self) -> int:
+        return int(self._config.get("thermal_guard", {}).get("gpu_trip", 85))
+
+    @Property(int, notify=configChanged)
+    def guardRelease(self) -> int:
+        return int(self._config.get("thermal_guard", {}).get("release_c", 10))
+
     @Property(bool, notify=telemetryChanged)
     def curvesEnabled(self) -> bool:
         return bool(self._telemetry.get("curves_enabled", True))
@@ -300,3 +354,37 @@ class Daemon(QObject):
     @Slot(bool)
     def setAutoEnabled(self, enabled: bool) -> None:
         self._command({"op": "set_config", "patch": {"auto": {"enabled": enabled}}})
+
+    @Slot(int)
+    def setCpuCap(self, pct: int) -> None:
+        """Cap for the profile that is active right now (daemon resolves it)."""
+        self._command({"op": "set_cpu_cap", "pct": int(pct)})
+
+    @Slot(bool)
+    def setCpuCapEnabled(self, enabled: bool) -> None:
+        self._command({"op": "set_config", "patch": {"cpu_cap": {"enabled": enabled}}})
+
+    @Slot(str, "QVariantList")
+    def setFanCurve(self, group: str, points: list) -> None:
+        clean = [[int(p[0]), int(p[1])] for p in points]
+        self._command({"op": "set_config", "patch": {"fan_curves": {group: clean}}})
+
+    @Slot(float, int)
+    def setCurveTuning(self, hysteresis: float, min_step: int) -> None:
+        self._command({
+            "op": "set_config",
+            "patch": {"fan_curves": {"hysteresis_c": float(hysteresis), "min_step": int(min_step)}},
+        })
+
+    @Slot(int, int, int)
+    def setGuard(self, cpu_trip: int, gpu_trip: int, release_c: int) -> None:
+        self._command({
+            "op": "set_config",
+            "patch": {"thermal_guard": {
+                "cpu_trip": int(cpu_trip), "gpu_trip": int(gpu_trip), "release_c": int(release_c),
+            }},
+        })
+
+    @Slot()
+    def refreshConfig(self) -> None:
+        self._command({"op": "get_config"})

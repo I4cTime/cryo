@@ -28,6 +28,16 @@ from cryo import paths
 
 log = logging.getLogger(__name__)
 
+COMPATIBILITY_URL = "https://github.com/I4cTime/cryo/blob/main/docs/COMPATIBILITY.md"
+
+
+class UnsupportedHardware(RuntimeError):
+    """The machine lacks something Cryo cannot run without.
+
+    Raised at startup with a plain-language reason; cryod turns it into a
+    clear log line + exit status instead of a traceback and a restart loop.
+    """
+
 
 @dataclass
 class Fan:
@@ -42,18 +52,28 @@ class ThermalController:
     def __init__(self) -> None:
         self.hwmon = paths.find_hwmon()
         if self.hwmon is None:
-            raise RuntimeError(
-                "alienware_wmi hwmon not found — is the alienware-wmi driver loaded?"
+            raise UnsupportedHardware(
+                "the alienware-wmi driver exposes no hwmon on this machine "
+                "(no fan or temperature sensors). Cryo cannot run without it; "
+                "very old models (pre-2012 Aurora/Area-51, pre-ELC laptops) are "
+                "not covered by the driver."
             )
         self.fans = self._discover_fans()
         self.temps = self._discover_temps()  # {"cpu": index, "gpu": index}
         # Per-handler node when available — the legacy aggregate rejects
         # writing "custom" on kernel 6.14+ (see paths.find_platform_profile).
         self.profile_path, self.profile_choices_path = paths.find_platform_profile()
-        self._build_profile_maps()
+        try:
+            self._build_profile_maps()
+        except OSError as exc:
+            raise UnsupportedHardware(
+                f"platform profiles are unreadable ({exc}); the alienware-wmi "
+                "driver does not offer power modes on this machine."
+            ) from exc
         self.boost_ok = self._probe_boost()
         self.ac_path = paths.find_ac_supply()
         self.turbo_control = paths.find_turbo_control()
+        self.cap_path = paths.find_cpu_cap()
 
     # -- discovery ---------------------------------------------------------
 
@@ -150,6 +170,15 @@ class ThermalController:
             return None
         return raw == 0 if inverted else raw == 1
 
+    def cpu_cap(self) -> int | None:
+        """Current max_perf_pct, or None when the machine has no cap knob."""
+        if self.cap_path is None:
+            return None
+        try:
+            return self._read_int(self.cap_path)
+        except OSError:
+            return None
+
     def ac_online(self) -> bool:
         if self.ac_path is None:
             return True
@@ -178,6 +207,13 @@ class ThermalController:
             if fan.group == group:
                 (self.hwmon / f"fan{fan.index}_boost").write_text(str(value))
 
+    def set_cpu_cap(self, pct: int) -> None:
+        """Write max_perf_pct (10-100). 100 = no cap."""
+        if self.cap_path is None:
+            raise RuntimeError("no CPU performance cap control on this machine")
+        pct = max(10, min(100, int(pct)))
+        self.cap_path.write_text(str(pct))
+
     def set_turbo(self, enabled: bool) -> None:
         if self.turbo_control is None:
             raise RuntimeError("no CPU turbo control found on this machine")
@@ -198,12 +234,14 @@ class ThermalController:
             "fan_groups": sorted({f.group for f in self.fans}),
             "turbo": self.turbo_control is not None,
             "ac_supply": self.ac_path is not None,
+            "cpu_cap": self.cap_path is not None,
         }
 
     def telemetry(self) -> dict:
         return {
             "profile": self.profile(),
             "turbo": self.turbo(),
+            "cpu_cap": self.cpu_cap(),
             "ac": self.ac_online(),
             "cpu_temp": self.temp("cpu"),
             "gpu_temp": self.temp("gpu"),

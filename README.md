@@ -20,9 +20,15 @@ QML GUI + CLI built on the mainline **alienware-wmi** kernel driver — no
 Windows original) don't:
 
 - **Custom fan curves** — temp→boost curves per fan group with hysteresis,
-  driven through the kernel's `custom` platform profile.
+  driven through the kernel's `custom` platform profile, editable in the
+  GUI or with `cryoctl curve`.
 - **Thermal Guard** — an emergency failsafe in *any* profile: trip
   temperatures force 100% fans, hold, then restore your previous state.
+  Thresholds are editable in the GUI or with `cryoctl guard`.
+- **CPU power cap** — a per-power-mode ceiling on the CPU's performance
+  state (`intel_pstate max_perf_pct`), re-applied on every mode switch and
+  after resume. On the m18 R2, 90% ≈ 5.2 GHz single-core: about 12 W and
+  9 °C off the in-game CPU peak while the GPU gets more headroom.
 - **Game detection** — sustained dGPU load (NVML) flips the machine into
   G-Mode automatically, and restores your previous profile when you quit.
 - **Auto profiles** — battery → quiet, AC → balanced, all configurable,
@@ -42,7 +48,8 @@ every client renders only what exists. See
 the tested-models table — reports welcome, working or not:
 
 ```sh
-cryoctl doctor   # hardware/driver report, made for pasting into an issue
+cryoctl doctor   # hardware/driver report with a supported / partial /
+                 # unsupported verdict, made for pasting into an issue
 ```
 
 ## Architecture
@@ -91,17 +98,22 @@ and — for game detection — the NVIDIA proprietary driver.
 cryoctl status | watch
 cryoctl profile gmode / cryoctl gmode
 cryoctl boost cpu 60
+cryoctl cap 90                       # CPU cap for the current mode (cap gmode 95 for another)
+cryoctl curve cpu 45:0 60:15 70:35 80:60 95:100
+cryoctl guard cpu 90 / cryoctl guard show
 cryoctl light quantum / cryoctl light static 00D1FF
 cryoctl doctor
 cryo-gui
 ```
 
 Config lives at `/etc/cryo/config.json` (deep-merged over defaults in
-`cryo/daemon/config.py`) — fan curve points, guard thresholds, auto-rule
-targets, game detection thresholds, socket group. The file holds only your
-overrides and the daemon never rewrites it; what the daemon changes on its
-own (last lighting, the curves-off latch a manual boost sets) lives in
-`/var/lib/cryo/state.json`.
+`cryo/daemon/config.py`) — fan curve points, guard thresholds, CPU caps per
+mode, auto-rule targets, game detection thresholds, socket group. The file
+holds only your overrides. The daemon rewrites it only when you change a
+setting from the GUI or `cryoctl curve/guard/cap` (every patch is
+validated first, and keys you never touched keep tracking new defaults);
+what the daemon changes on its own (last lighting, the curves-off latch a
+manual boost sets) lives in `/var/lib/cryo/state.json`.
 
 After suspend, `cryod-resume.service` runs `cryoctl reapply`, which reopens
 the lighting controller, re-asserts the platform profile and re-initializes
@@ -118,3 +130,7 @@ driver is missing, so starting before the driver loads is fine.
 - Fan boost is not implemented by every model's firmware; when the
   startup probe finds it missing, curves and the Thermal Guard disable
   themselves visibly rather than failing silently.
+- On a machine the alienware-wmi driver doesn't cover (no hwmon, no
+  platform profiles — typically pre-2012 desktops), `cryod` logs one
+  plain-language reason, exits with status 78 and is not restarted;
+  `cryoctl doctor` gives the same verdict without the daemon.

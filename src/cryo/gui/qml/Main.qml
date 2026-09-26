@@ -194,6 +194,148 @@ ApplicationWindow {
         }
     }
 
+    component CryoSpin: SpinBox {
+        id: spin
+        editable: true
+        font.pixelSize: 12
+        implicitWidth: 92
+        implicitHeight: 28
+        contentItem: TextInput {
+            text: spin.textFromValue(spin.value, spin.locale)
+            font: spin.font
+            color: root.fg
+            horizontalAlignment: Qt.AlignHCenter
+            verticalAlignment: Qt.AlignVCenter
+            readOnly: !spin.editable
+            validator: spin.validator
+            inputMethodHints: Qt.ImhFormattedNumbersOnly
+            selectByMouse: true
+        }
+        background: Rectangle {
+            color: "#141A26"
+            border.color: spin.activeFocus ? root.cyan : root.panelBorder
+            radius: 6
+        }
+        up.indicator: Rectangle {
+            x: spin.width - width; height: spin.height; width: 22
+            color: "transparent"
+            Text { anchors.centerIn: parent; text: "+"; color: root.muted; font.pixelSize: 14 }
+        }
+        down.indicator: Rectangle {
+            x: 0; height: spin.height; width: 22
+            color: "transparent"
+            Text { anchors.centerIn: parent; text: "−"; color: root.muted; font.pixelSize: 14 }
+        }
+    }
+
+    component CryoButton: Rectangle {
+        id: btn
+        property string label
+        property bool accent: false
+        signal clicked()
+        implicitHeight: 28
+        implicitWidth: btnText.implicitWidth + 24
+        radius: 6
+        color: accent ? Qt.alpha(root.cyan, 0.15) : "#141A26"
+        border.color: accent ? root.cyan : root.panelBorder
+        opacity: enabled ? 1.0 : 0.4
+        Text {
+            id: btnText
+            anchors.centerIn: parent
+            text: btn.label
+            color: btn.accent ? root.cyan : root.fg
+            font.pixelSize: 12
+        }
+        MouseArea {
+            anchors.fill: parent
+            cursorShape: Qt.PointingHandCursor
+            onClicked: btn.clicked()
+        }
+    }
+
+    // One fan group's [temp, boost] points, edited locally and applied as
+    // a whole so the daemon validates the curve in one go.
+    component CurveEditor: ColumnLayout {
+        id: editor
+        property string group
+        property var source: []           // daemon's current points
+        property bool dirty: false
+        spacing: 4
+        Layout.fillWidth: true
+
+        ListModel { id: points }
+
+        function load() {
+            points.clear()
+            for (const p of editor.source)
+                points.append({ temp: p[0], boost: p[1] })
+            editor.dirty = false
+        }
+        onSourceChanged: if (!editor.dirty) load()
+        Component.onCompleted: load()
+
+        RowLayout {
+            Layout.fillWidth: true
+            Text { text: editor.group.toUpperCase() + " curve"; color: root.fg; font.pixelSize: 12; font.bold: true }
+            Item { Layout.fillWidth: true }
+            Text { text: "°C → boost %"; color: root.muted; font.pixelSize: 11 }
+        }
+        Repeater {
+            model: points
+            delegate: RowLayout {
+                required property int index
+                required property int temp
+                required property int boost
+                Layout.fillWidth: true
+                spacing: 6
+                CryoSpin {
+                    from: 0; to: 110; value: temp
+                    onValueModified: { points.setProperty(index, "temp", value); editor.dirty = true }
+                }
+                Text { text: "→"; color: root.muted; font.pixelSize: 12 }
+                CryoSpin {
+                    from: 0; to: 100; value: boost
+                    onValueModified: { points.setProperty(index, "boost", value); editor.dirty = true }
+                }
+                Item { Layout.fillWidth: true }
+                CryoButton {
+                    label: "✕"
+                    enabled: points.count > 2
+                    onClicked: { points.remove(index); editor.dirty = true }
+                }
+            }
+        }
+        RowLayout {
+            Layout.fillWidth: true
+            spacing: 6
+            CryoButton {
+                label: "+ point"
+                enabled: points.count < 8
+                onClicked: {
+                    const last = points.get(points.count - 1)
+                    points.append({ temp: Math.min(110, last.temp + 5), boost: Math.min(100, last.boost + 10) })
+                    editor.dirty = true
+                }
+            }
+            CryoButton { label: "Revert"; enabled: editor.dirty; onClicked: editor.load() }
+            Item { Layout.fillWidth: true }
+            CryoButton {
+                label: "Apply"
+                accent: true
+                enabled: editor.dirty
+                onClicked: {
+                    const out = []
+                    for (let i = 0; i < points.count; i++) {
+                        const p = points.get(i)
+                        out.push([p.temp, p.boost])
+                    }
+                    daemon.setFanCurve(editor.group, out)
+                    editor.dirty = false
+                }
+            }
+        }
+    }
+
     // ---------- helpers ----------
 
     function fanRpm(group) {
@@ -211,6 +353,7 @@ ApplicationWindow {
     // ---------- layout ----------
 
     Flickable {
+        objectName: "scroller"
         anchors.fill: parent
         contentHeight: content.height + 40
         clip: true
@@ -558,6 +701,150 @@ ApplicationWindow {
                             onPressedChanged: if (!pressed) daemon.setBoost("gpu", Math.round(value))
                         }
                         Text { text: Math.round(gpuBoost.value) + "%"; color: root.fg; font.pixelSize: 12; Layout.preferredWidth: 36 }
+                    }
+                }
+            }
+
+            // Fan curve + guard editor (0.4.0)
+            SectionTitle { text: "FAN CURVES & GUARD"; visible: daemon.hasBoost }
+            Panel {
+                Layout.fillWidth: true
+                visible: daemon.hasBoost
+                implicitHeight: curveColumn.height + 28
+                ColumnLayout {
+                    id: curveColumn
+                    x: 14; y: 14
+                    width: parent.width - 28
+                    spacing: 10
+                    RowLayout {
+                        Layout.fillWidth: true
+                        Text { text: "Edit curves"; color: root.fg; font.pixelSize: 13 }
+                        Item { Layout.fillWidth: true }
+                        CryoButton {
+                            label: curveBody.visible ? "Hide" : "Show"
+                            onClicked: curveBody.visible = !curveBody.visible
+                        }
+                    }
+                    Text {
+                        text: "Points are °C → fan boost %; temperatures must rise, boosts must not fall. Applied in Custom mode; the Thermal Guard trips in any mode."
+                        color: root.muted
+                        font.pixelSize: 11
+                        Layout.fillWidth: true
+                        wrapMode: Text.WordWrap
+                    }
+                    ColumnLayout {
+                        id: curveBody
+                        objectName: "curveBody"
+                        visible: false
+                        Layout.fillWidth: true
+                        spacing: 12
+                        CurveEditor { group: "cpu"; source: daemon.cpuCurve }
+                        CurveEditor { group: "gpu"; source: daemon.gpuCurve }
+
+                        // Tuning + guard thresholds
+                        ColumnLayout {
+                            id: tuning
+                            Layout.fillWidth: true
+                            spacing: 6
+                            property bool dirty: false
+                            function load() {
+                                hystSpin.value = Math.round(daemon.curveHysteresis)
+                                stepSpin.value = daemon.curveMinStep
+                                cpuTripSpin.value = daemon.guardCpuTrip
+                                gpuTripSpin.value = daemon.guardGpuTrip
+                                releaseSpin.value = daemon.guardRelease
+                                tuning.dirty = false
+                            }
+                            Connections {
+                                target: daemon
+                                function onConfigChanged() { if (!tuning.dirty) tuning.load() }
+                            }
+                            Component.onCompleted: load()
+                            Text { text: "Tuning & Thermal Guard"; color: root.fg; font.pixelSize: 12; font.bold: true }
+                            GridLayout {
+                                columns: 4
+                                columnSpacing: 8
+                                rowSpacing: 6
+                                Layout.fillWidth: true
+                                Text { text: "Hysteresis °C"; color: root.muted; font.pixelSize: 11 }
+                                CryoSpin { id: hystSpin; from: 0; to: 15; onValueModified: tuning.dirty = true }
+                                Text { text: "Min step %"; color: root.muted; font.pixelSize: 11 }
+                                CryoSpin { id: stepSpin; from: 1; to: 25; onValueModified: tuning.dirty = true }
+                                Text { text: "CPU trip °C"; color: root.muted; font.pixelSize: 11 }
+                                CryoSpin { id: cpuTripSpin; from: 60; to: 105; onValueModified: tuning.dirty = true }
+                                Text { text: "GPU trip °C"; color: root.muted; font.pixelSize: 11 }
+                                CryoSpin { id: gpuTripSpin; from: 60; to: 105; onValueModified: tuning.dirty = true }
+                                Text { text: "Release °C"; color: root.muted; font.pixelSize: 11 }
+                                CryoSpin { id: releaseSpin; from: 1; to: 30; onValueModified: tuning.dirty = true }
+                            }
+                            RowLayout {
+                                Layout.fillWidth: true
+                                CryoButton { label: "Revert"; enabled: tuning.dirty; onClicked: tuning.load() }
+                                Item { Layout.fillWidth: true }
+                                CryoButton {
+                                    label: "Apply"
+                                    accent: true
+                                    enabled: tuning.dirty
+                                    onClicked: {
+                                        daemon.setCurveTuning(hystSpin.value, stepSpin.value)
+                                        daemon.setGuard(cpuTripSpin.value, gpuTripSpin.value, releaseSpin.value)
+                                        tuning.dirty = false
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // CPU performance cap (0.4.0)
+            SectionTitle { text: "CPU POWER CAP"; visible: daemon.hasCpuCap }
+            Panel {
+                Layout.fillWidth: true
+                visible: daemon.hasCpuCap
+                implicitHeight: capColumn.height + 28
+                ColumnLayout {
+                    id: capColumn
+                    x: 14; y: 14
+                    width: parent.width - 28
+                    spacing: 4
+                    RowLayout {
+                        Layout.fillWidth: true
+                        Text { text: "Cap per power mode"; color: root.fg; font.pixelSize: 13 }
+                        Item { Layout.fillWidth: true }
+                        CryoSwitch {
+                            id: capSwitch
+                            checked: daemon.cpuCapEnabled
+                            Binding on checked { value: daemon.cpuCapEnabled }
+                            onToggled: daemon.setCpuCapEnabled(checked)
+                        }
+                    }
+                    Text {
+                        text: "Limits the CPU's top performance state (intel_pstate max_perf_pct), remembered per mode and re-applied on every switch. 90% ≈ 5.2 GHz on the m18 R2: about 12 W and 9 °C off the in-game peak."
+                        color: root.muted
+                        font.pixelSize: 11
+                        Layout.fillWidth: true
+                        wrapMode: Text.WordWrap
+                    }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        enabled: capSwitch.checked
+                        opacity: enabled ? 1.0 : 0.4
+                        Text {
+                            text: root.profileLabels[daemon.profile] || daemon.profile
+                            color: root.muted
+                            font.pixelSize: 12
+                            Layout.preferredWidth: 90
+                            elide: Text.ElideRight
+                        }
+                        CryoSlider {
+                            id: capSlider
+                            from: 50; to: 100; stepSize: 1
+                            value: daemon.cpuCap
+                            Binding on value { when: !capSlider.pressed; value: daemon.cpuCap }
+                            onPressedChanged: if (!pressed) daemon.setCpuCap(Math.round(value))
+                        }
+                        Text { text: Math.round(capSlider.value) + "%"; color: root.fg; font.pixelSize: 12; Layout.preferredWidth: 36 }
                     }
                 }
             }

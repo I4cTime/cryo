@@ -16,6 +16,7 @@ PLATFORM_PROFILE_CLASS = Path("/sys/class/platform-profile")
 POWER_SUPPLY_ROOT = Path("/sys/class/power_supply")
 NO_TURBO = Path("/sys/devices/system/cpu/intel_pstate/no_turbo")
 CPUFREQ_BOOST = Path("/sys/devices/system/cpu/cpufreq/boost")
+MAX_PERF_PCT = Path("/sys/devices/system/cpu/intel_pstate/max_perf_pct")
 DMI_ROOT = Path("/sys/devices/virtual/dmi/id")
 USB_DEVICES = Path("/sys/bus/usb/devices")
 
@@ -94,6 +95,18 @@ def find_turbo_control() -> tuple[list[Path], bool] | None:
     if per_policy:
         return per_policy, False
     return None
+
+
+def find_cpu_cap() -> Path | None:
+    """The CPU performance-cap knob, or None.
+
+    intel_pstate's max_perf_pct caps the highest P-state as a percentage of
+    the max (turbo) frequency — 90 on an m18 R2 is roughly a 5.2 GHz
+    single-core ceiling. amd_pstate has no equivalent global knob, so the
+    cap is reported as unavailable there rather than faked through
+    scaling_max_freq.
+    """
+    return MAX_PERF_PCT if MAX_PERF_PCT.exists() else None
 
 
 def dmi_model() -> str:

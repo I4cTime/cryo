@@ -74,6 +74,7 @@ class Engine:
 
         if config["lighting"]["restore"]:
             self.restore_lighting()
+        self.apply_cpu_cap()
 
     # -- state -------------------------------------------------------------
 
@@ -93,6 +94,10 @@ class Engine:
         if latched is None:
             return bool(self.config["fan_curves"]["enabled"])
         return bool(latched)
+
+    def reset_curve_state(self) -> None:
+        self._curve_anchor.clear()
+        self._curve_boost.clear()
 
     def latch_curves(self, enabled: bool | None) -> None:
         """None clears the latch (follow config again)."""
@@ -154,11 +159,42 @@ class Engine:
             log.warning("profile re-apply failed: %s", exc)
             result["profile"] = None
         result["nvml"] = self.gpu.reinit()
+        result["cpu_cap"] = self.apply_cpu_cap()
         self.capabilities["game_detection"] = self.gpu.available()
         self._curve_anchor.clear()
         self._curve_boost.clear()
         log.info("Re-applied state after resume: %s", result)
         return result
+
+    # -- CPU performance cap ----------------------------------------------
+
+    def cpu_cap_target(self, profile: str | None = None) -> int | None:
+        """The max_perf_pct this profile should run at, or None to leave the
+        knob alone (no control on this machine, or the feature is off)."""
+        if not self.capabilities.get("cpu_cap"):
+            return None
+        cap = self.config.get("cpu_cap", {})
+        if not cap.get("enabled", True):
+            return None
+        if profile is None:
+            try:
+                profile = self.thermal.profile()
+            except OSError:
+                return None
+        return int(cap.get("profiles", {}).get(profile, 100))
+
+    def apply_cpu_cap(self, profile: str | None = None) -> int | None:
+        """Write the cap for `profile` (default: current) if it differs."""
+        target = self.cpu_cap_target(profile)
+        if target is None:
+            return None
+        try:
+            if self.thermal.cpu_cap() != target:
+                self.thermal.set_cpu_cap(target)
+                log.info("CPU cap -> %s%% (profile %s)", target, profile or "current")
+        except OSError as exc:
+            log.warning("CPU cap write failed: %s", exc)
+        return target
 
     # -- profile helpers ---------------------------------------------------
 
@@ -169,6 +205,7 @@ class Engine:
             self._curve_anchor.clear()
             self._curve_boost.clear()
         log.info("Profile -> %s", name)
+        self.apply_cpu_cap(name)
 
     def resolve_profile(self, name: str) -> str | None:
         """Map a configured profile name onto what this machine offers.
@@ -281,6 +318,7 @@ class Engine:
         # data path for everything the UI shows.
         telemetry["curves_enabled"] = curves_on
         telemetry["auto_enabled"] = auto["enabled"]
+        telemetry["cpu_cap_enabled"] = bool(self.config.get("cpu_cap", {}).get("enabled", True))
         telemetry["lighting"] = self.lighting_last()
         telemetry["capabilities"] = self.capabilities
 
