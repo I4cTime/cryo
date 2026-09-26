@@ -243,7 +243,9 @@ def fmt_status(st: dict) -> str:
     )
     cap = st.get("cpu_cap")
     if cap is not None:
-        power += f"  ·  cap {cap}%" + ("" if st.get("cpu_cap_enabled", True) else " (off)")
+        max_mhz = (st.get("capabilities") or {}).get("cpu_max_mhz")
+        ghz = f" ≈ {cap / 100 * max_mhz / 1000:.1f} GHz" if max_mhz else ""
+        power += f"  ·  cap {cap}%{ghz}" + ("" if st.get("cpu_cap_enabled", True) else " (off)")
     add("power", power)
     return "\n".join(lines)
 

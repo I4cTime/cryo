@@ -80,6 +80,7 @@ class ThermalController:
         self.ac_path = paths.find_ac_supply()
         self.turbo_control = paths.find_turbo_control()
         self.cap_path = paths.find_cpu_cap()
+        self.cpu_max_mhz = (paths.cpu_max_khz() or 0) // 1000 or None
         for reason in self.missing:
             log.warning("running without %s", reason)
 
@@ -262,6 +263,9 @@ class ThermalController:
             "turbo": self.turbo_control is not None,
             "ac_supply": self.ac_path is not None,
             "cpu_cap": self.cap_path is not None,
+            # Top CPU frequency (MHz) so a cap percentage can be shown in GHz
+            # for this machine; None when cpufreq doesn't say.
+            "cpu_max_mhz": self.cpu_max_mhz,
         }
 
     def telemetry(self) -> dict:

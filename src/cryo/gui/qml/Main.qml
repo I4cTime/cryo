@@ -911,7 +911,12 @@ ApplicationWindow {
                         }
                     }
                     Text {
-                        text: "Limits the CPU's top performance state (intel_pstate max_perf_pct), remembered per mode and re-applied on every switch. 90% ≈ 5.2 GHz on the m18 R2: about 12 W and 9 °C off the in-game peak."
+                        // Machine-specific: the GHz figure comes from this
+                        // CPU's cpufreq max, never from a fixed model.
+                        text: "Limits the CPU's top performance state (intel_pstate max_perf_pct), remembered per mode and re-applied on every switch. "
+                              + (daemon.cpuMaxMhz > 0
+                                 ? "This CPU tops out at " + (daemon.cpuMaxMhz / 1000).toFixed(1) + " GHz; a lower cap trades a little single-core speed for less heat and power."
+                                 : "A lower cap trades a little single-core speed for less heat and power.")
                         color: root.muted
                         font.pixelSize: 11
                         Layout.fillWidth: true
@@ -935,7 +940,15 @@ ApplicationWindow {
                             Binding on value { when: !capSlider.pressed; value: daemon.cpuCap }
                             onPressedChanged: if (!pressed) daemon.setCpuCap(Math.round(value))
                         }
-                        Text { text: Math.round(capSlider.value) + "%"; color: root.fg; font.pixelSize: 12; Layout.preferredWidth: 36 }
+                        Text {
+                            text: Math.round(capSlider.value) + "%"
+                                  + (daemon.cpuMaxMhz > 0
+                                     ? "  ≈ " + (Math.round(capSlider.value) / 100 * daemon.cpuMaxMhz / 1000).toFixed(1) + " GHz"
+                                     : "")
+                            color: root.fg
+                            font.pixelSize: 12
+                            Layout.preferredWidth: 100
+                        }
                     }
                 }
             }

@@ -30,6 +30,7 @@ def _fake_sysfs(monkeypatch, tmp_path: Path, hwmon: bool, profiles: bool):
     monkeypatch.setattr(paths, "find_ac_supply", lambda: None)
     monkeypatch.setattr(paths, "find_turbo_control", lambda: None)
     monkeypatch.setattr(paths, "find_cpu_cap", lambda: None)
+    monkeypatch.setattr(paths, "cpu_max_khz", lambda: 5800000)
     monkeypatch.setattr(paths, "dmi_model", lambda: "Test Box")
 
 
@@ -42,6 +43,7 @@ def test_full_machine_reports_nothing_missing(monkeypatch, tmp_path):
     assert tc.temp("cpu") == 55.0
     caps = tc.capabilities()
     assert caps["thermals"] is True and "gmode" in caps["profiles"]
+    assert caps["cpu_max_mhz"] == 5800
 
 
 def test_no_hwmon_degrades_thermals_only(monkeypatch, tmp_path):

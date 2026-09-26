@@ -17,6 +17,7 @@ POWER_SUPPLY_ROOT = Path("/sys/class/power_supply")
 NO_TURBO = Path("/sys/devices/system/cpu/intel_pstate/no_turbo")
 CPUFREQ_BOOST = Path("/sys/devices/system/cpu/cpufreq/boost")
 MAX_PERF_PCT = Path("/sys/devices/system/cpu/intel_pstate/max_perf_pct")
+CPUINFO_MAX_FREQ = Path("/sys/devices/system/cpu/cpufreq/policy0/cpuinfo_max_freq")
 DMI_ROOT = Path("/sys/devices/virtual/dmi/id")
 USB_DEVICES = Path("/sys/bus/usb/devices")
 
@@ -107,6 +108,18 @@ def find_cpu_cap() -> Path | None:
     scaling_max_freq.
     """
     return MAX_PERF_PCT if MAX_PERF_PCT.exists() else None
+
+
+def cpu_max_khz() -> int | None:
+    """The CPU's top (turbo) frequency in kHz from cpufreq, or None.
+
+    Lets clients translate a max_perf_pct percentage into GHz for the
+    machine they run on instead of quoting one model's numbers.
+    """
+    try:
+        return int(CPUINFO_MAX_FREQ.read_text().strip())
+    except (OSError, ValueError):
+        return None
 
 
 def dmi_model() -> str:

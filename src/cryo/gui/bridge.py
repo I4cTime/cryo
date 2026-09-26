@@ -28,6 +28,7 @@ DEFAULT_CAPABILITIES: dict = {
     "lighting": True,
     "game_detection": True,
     "cpu_cap": False,
+    "cpu_max_mhz": None,
 }
 
 
@@ -253,6 +254,10 @@ class Daemon(QObject):
     @Property(bool, notify=capabilitiesChanged)
     def hasCpuCap(self) -> bool:
         return bool(self._capabilities.get("cpu_cap", False))
+
+    @Property(int, notify=capabilitiesChanged)
+    def cpuMaxMhz(self) -> int:
+        return int(self._capabilities.get("cpu_max_mhz") or 0)
 
     @Property(int, notify=telemetryChanged)
     def cpuCap(self) -> int:
