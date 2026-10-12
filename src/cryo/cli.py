@@ -15,6 +15,7 @@ EXIT_UNSUPPORTED = 2
 USAGE = """\
 cryoctl — Cryo control CLI
 
+  cryoctl --version                  Print cryoctl's version (status shows cryod's)
   cryoctl status [--json]            Show telemetry snapshot (--json: raw frame)
   cryoctl watch [--log FILE.csv]     Stream live telemetry (--log: append CSV,
                                      made for long leak-hunt sessions)
@@ -241,15 +242,25 @@ def fmt_status(st: dict) -> str:
         for proc in st.get("vram_procs", []):
             add("", f"{proc['vram_mb'] / 1024:5.1f} GB  {proc['name']}")
 
-    power = ("AC" if st.get("ac") else "battery") + (
-        "  ·  turbo on" if st.get("turbo") else "  ·  turbo off"
-    )
+    power = "AC" if st.get("ac") else "battery"
+    turbo = st.get("turbo")
+    if turbo is not None:  # None = no turbo control on this machine
+        power += "  ·  turbo on" if turbo else "  ·  turbo off"
     cap = st.get("cpu_cap")
     if cap is not None:
         max_mhz = (st.get("capabilities") or {}).get("cpu_max_mhz")
         ghz = f" ≈ {cap / 100 * max_mhz / 1000:.1f} GHz" if max_mhz else ""
         power += f"  ·  cap {cap}%{ghz}" + ("" if st.get("cpu_cap_enabled", True) else " (off)")
     add("power", power)
+
+    daemon_version = (st.get("capabilities") or {}).get("version")
+    if daemon_version:
+        stale = (
+            f"  (cryoctl is {__version__}: restart cryod to load it)"
+            if daemon_version != __version__
+            else ""
+        )
+        add("cryod", daemon_version + stale)
     return "\n".join(lines)
 
 
@@ -351,6 +362,9 @@ def request(
         print(fmt_status(first["status"]))
     else:
         print(json.dumps(first, indent=2))
+    if first.get("ok") is False:
+        # Scripts and cryod-resume.service rely on the exit status.
+        sys.exit(1)
     if stream:
         with contextlib.ExitStack() as stack:
             writer = None
@@ -404,6 +418,9 @@ def main() -> None:
     args = sys.argv[1:]
     if not args or args[0] in ("-h", "--help"):
         print(USAGE)
+        return
+    if args[0] in ("-V", "--version"):
+        print(f"cryoctl {__version__}")
         return
     match args:
         case ["status"]:
