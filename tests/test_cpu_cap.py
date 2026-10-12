@@ -81,3 +81,22 @@ def test_cap_write_failure_is_logged_not_raised():
 
     engine.thermal.set_cpu_cap = boom
     assert engine.apply_cpu_cap("performance") == 80
+
+
+def test_switching_the_feature_off_lifts_the_cap():
+    engine = make_engine({"cpu_cap": {"profiles": {"performance": 90}}})
+    engine.apply_cpu_cap()
+    assert engine.thermal.cap_writes == [90]
+    engine.config = config_mod.merged(
+        {"cpu_cap": {"enabled": False, "profiles": {"performance": 90}}}
+    )
+    engine.release_cpu_cap()
+    assert engine.thermal.cap_writes == [90, 100]
+    engine.release_cpu_cap()  # already uncapped → no extra write
+    assert engine.thermal.cap_writes == [90, 100]
+
+
+def test_release_without_cap_control_is_a_no_op():
+    engine = make_engine(has_cap=False)
+    engine.release_cpu_cap()
+    assert engine.thermal.cap_writes == []
