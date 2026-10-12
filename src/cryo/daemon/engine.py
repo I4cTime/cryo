@@ -56,7 +56,7 @@ class Engine:
         self._guard_active = False
         self._guard_engaged_at = 0.0
         self._guard_saved_boosts: dict[str, int] = {}
-        self._peaks: dict[str, float] = {"cpu": 0.0, "gpu": 0.0}
+        self._peaks: dict[str, float] = {"cpu": 0.0, "gpu": 0.0, "vram": 0}
 
         # Static hardware capabilities, resolved once and shipped with
         # every telemetry frame so clients can render what exists.
@@ -256,6 +256,18 @@ class Engine:
         self.set_profile(target)
         return target
 
+    def _track_peaks(self, telemetry: dict) -> None:
+        """Session peaks for both temps and dGPU VRAM, kept daemon-side so
+        every client (status, watch, GUI) sees the same high-water mark."""
+        for group, key in (
+            ("cpu", "cpu_temp"), ("gpu", "gpu_temp"), ("vram", "vram_used_mb"),
+        ):
+            if telemetry.get(key) is not None:
+                self._peaks[group] = max(self._peaks[group], telemetry[key])
+        telemetry["cpu_peak"] = self._peaks["cpu"]
+        telemetry["gpu_peak"] = self._peaks["gpu"]
+        telemetry["vram_peak_mb"] = self._peaks["vram"] or None
+
     # -- tick --------------------------------------------------------------
 
     def tick(self) -> dict:
@@ -312,12 +324,7 @@ class Engine:
                 telemetry["profile"] = target
         self._last_ac = ac
 
-        # Peak tracking
-        for group, key in (("cpu", "cpu_temp"), ("gpu", "gpu_temp")):
-            if telemetry[key] is not None:
-                self._peaks[group] = max(self._peaks[group], telemetry[key])
-        telemetry["cpu_peak"] = self._peaks["cpu"]
-        telemetry["gpu_peak"] = self._peaks["gpu"]
+        self._track_peaks(telemetry)
 
         # Thermal guard runs in ANY profile and outranks curves.
         self._apply_guard(telemetry)
