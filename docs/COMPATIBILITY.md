@@ -29,9 +29,14 @@ builds this mapping from the kernel's advertised choices at startup.
 
 ## Tested models
 
-| Model | Thermals | Curves/Guard | G-Mode | Lighting | Game sense | Reported by |
-|---|---|---|---|---|---|---|
-| Alienware m18 R2 (Intel + RTX 4080) | ✅ | ✅ | ✅ | ✅ | ✅ | maintainer |
+| Model | Verdict | Thermals | Curves/Guard | G-Mode | Lighting | Game sense | Reported by |
+|---|---|---|---|---|---|---|---|
+| Alienware m18 R2 (Intel + RTX 4080) | SUPPORTED | ✅ | ✅ | ✅ | ✅ | ✅ | maintainer |
+| Alienware Aurora R4 (2011 desktop, RTX 5060 Ti) | LIMITED | ❌ | ❌ | ❌ | ❌ | ✅ | [#9](https://github.com/I4cTime/cryo/issues/9) |
+
+The Aurora R4 loads alienware-wmi but gets no hwmon or platform profiles
+from it, and its `187c:0513` lighting controller predates AW-ELC. GPU
+telemetry, game detection, turbo and the CPU cap work in limited mode.
 
 **Have a different Alienware or Dell G-Series machine?** Run:
 
