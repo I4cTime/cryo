@@ -110,7 +110,10 @@ class Daemon(QObject):
             self._gpu_history = (self._gpu_history + [t["gpu_temp"]])[-HISTORY_LEN:]
         if t.get("vram_used_mb") is not None:
             self._vram_history = (self._vram_history + [t["vram_used_mb"]])[-HISTORY_LEN:]
-            self._vram_peak = max(self._vram_peak, t["vram_used_mb"])
+            # The daemon's peak covers ticks from before this GUI opened.
+            self._vram_peak = max(
+                self._vram_peak, t["vram_used_mb"], t.get("vram_peak_mb") or 0
+            )
         # Capabilities are static per daemon run — emit separately and only
         # on change, so the mode grid isn't rebuilt every tick.
         caps = t.get("capabilities") or DEFAULT_CAPABILITIES

@@ -234,7 +234,10 @@ def fmt_status(st: dict) -> str:
 
     used, total = st.get("vram_used_mb"), st.get("vram_total_mb")
     if used is not None and total:
-        add("vram", f"{used / 1024:.1f} / {total / 1024:.1f} GB")
+        parts = [f"{used / 1024:.1f} / {total / 1024:.1f} GB ({used / total:.0%})"]
+        if st.get("vram_peak_mb"):
+            parts.append(f"peak {st['vram_peak_mb'] / 1024:.1f} GB")
+        add("vram", "  ·  ".join(parts))
         for proc in st.get("vram_procs", []):
             add("", f"{proc['vram_mb'] / 1024:5.1f} GB  {proc['name']}")
 
@@ -369,7 +372,12 @@ def request(
                         else ""
                     )
                     vram = event.get("vram_used_mb")
-                    vram_s = f" vram {vram / 1024:.1f}G" if vram is not None else ""
+                    vram_total = event.get("vram_total_mb")
+                    vram_s = (
+                        f" vram {vram / 1024:.1f}/{vram_total / 1024:.1f}G"
+                        if vram is not None and vram_total
+                        else ""
+                    )
                     fans = " ".join(f"{f['rpm']}rpm" for f in event.get("fans", []))
                     print(
                         f"[{event.get('profile')}] cpu {cpu}°C gpu {gpu}°C "
