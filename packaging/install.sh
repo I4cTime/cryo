@@ -15,9 +15,15 @@ if [[ -z "${SUDO_USER:-}" || "$SUDO_USER" == "root" ]]; then
     exit 1
 fi
 REAL_USER="$SUDO_USER"
+REAL_HOME="$(getent passwd "$REAL_USER" | cut -d: -f6)"
+
+if ! sudo -u "$REAL_USER" env PATH="$REAL_HOME/.local/bin:$PATH" bash -c "command -v uv" >/dev/null; then
+    echo "uv not found on $REAL_USER's PATH. Install it first, then re-run this script:" >&2
+    echo "  https://docs.astral.sh/uv/getting-started/installation/" >&2
+    exit 1
+fi
 
 echo ">> Syncing venv (as $REAL_USER)"
-REAL_HOME="$(getent passwd "$REAL_USER" | cut -d: -f6)"
 sudo -u "$REAL_USER" env PATH="$REAL_HOME/.local/bin:$PATH" \
     bash -c "cd '$REPO_DIR' && uv sync"
 

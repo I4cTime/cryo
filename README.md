@@ -14,10 +14,10 @@
 [![X](https://img.shields.io/badge/follow-%40i4c__studio-000000?style=flat-square&logo=x&logoColor=white)](https://x.com/i4c_studio)
 [![Ko-fi](https://img.shields.io/badge/ko--fi-i4ctime-FF5E5B?style=flat-square&logo=kofi&logoColor=white)](https://ko-fi.com/i4ctime)
 
-The Alienware command center Dell never shipped for Linux. A root daemon +
-QML GUI + CLI built on the mainline **alienware-wmi** kernel driver — no
-`acpi_call`, no out-of-tree modules — that does things stock AWCC (and the
-Windows original) don't:
+The Alienware command center Dell never shipped for Linux, for Alienware
+and Dell G-Series machines on the mainline **alienware-wmi** kernel
+driver. A root daemon + QML GUI + CLI — no `acpi_call`, no out-of-tree
+modules — that does things stock AWCC (and the Windows original) don't:
 
 - **Custom fan curves** — temp→boost curves per fan group with hysteresis,
   driven through the kernel's `custom` platform profile, editable in the
@@ -40,12 +40,22 @@ Windows original) don't:
 - **AlienFX lighting** — 4-zone keyboard effects (protocol ported from
   AWCC), including a `quantum` cyan↔violet preset, restored on boot.
 
+## Will it work on my machine?
+
 Developed on an **Alienware m18 R2** (Pop!_OS); designed for the wider
 alienware-wmi ecosystem — the daemon probes what your machine supports at
 startup (profiles, G-Mode, fan boost, lighting, turbo control, NVML) and
-every client renders only what exists. See
-[docs/COMPATIBILITY.md](docs/COMPATIBILITY.md) for the feature matrix and
-the tested-models table — reports welcome, working or not:
+every client renders only what exists. Reported so far:
+
+| Model | Verdict |
+| ----- | ------- |
+| Alienware m18 R2 (Intel + RTX 4080) | SUPPORTED — everything works (maintainer) |
+| Alienware Aurora R4 (2011 desktop) | LIMITED — GPU telemetry, game detection, turbo and CPU cap only ([#9](https://github.com/I4cTime/cryo/issues/9)) |
+
+No Dell G-Series report yet. See
+[docs/COMPATIBILITY.md](docs/COMPATIBILITY.md) for the feature matrix.
+`cryoctl doctor` works before you trust Cryo with your fans; a model
+report is the most useful thing you can send, working or not:
 
 ```sh
 cryoctl doctor   # hardware/driver report with a supported / partial /
@@ -89,8 +99,18 @@ git clone https://github.com/I4cTime/cryo.git && cd cryo
 sudo packaging/install.sh   # venv sync + /etc/cryo + systemd unit + icons + .desktop
 ```
 
-Requires: the `alienware-wmi` kernel driver (mainline), Python 3.12+, `uv`,
-and — for game detection — the NVIDIA proprietary driver.
+Requires: the `alienware-wmi` kernel driver (mainline; fan control needs
+its hwmon, which landed in Linux 6.16), Python 3.12+,
+[`uv`](https://docs.astral.sh/uv/getting-started/installation/) on your
+user's PATH, and — for game detection — the NVIDIA proprietary driver.
+There is no distro package, Flatpak or PyPI release yet.
+
+To update, pull and re-run the installer; it restarts `cryod` on the new
+code:
+
+```sh
+cd cryo && git pull && sudo packaging/install.sh
+```
 
 ## Use
 
@@ -139,3 +159,21 @@ driver is missing, so starting before the driver loads is fine.
   plain-language reason and exit 78 without restarting. `cryoctl doctor`
   gives the same SUPPORTED / PARTIAL / LIMITED / UNSUPPORTED verdict
   without the daemon.
+
+## Uninstall
+
+`cryod` leaves the firmware where it last put it, so hand the machine back
+to stock first, then remove what the installer added:
+
+```sh
+cryoctl profile balanced && cryoctl boost cpu 0 && cryoctl boost gpu 0 && cryoctl cap 100
+sudo systemctl disable --now cryod.service cryod-resume.service
+sudo rm /etc/systemd/system/cryod.service /etc/systemd/system/cryod-resume.service
+sudo systemctl daemon-reload
+sudo rm -r /etc/cryo /var/lib/cryo
+rm ~/.local/bin/cryoctl ~/.local/bin/cryo-gui ~/.local/share/applications/cryo.desktop
+rm ~/.local/share/icons/hicolor/*/apps/cryo.png ~/.local/share/icons/hicolor/scalable/apps/cryo.svg
+```
+
+Then delete the cloned `cryo` directory. Skip the `boost` or `cap`
+commands your machine doesn't support (`cryoctl doctor` lists them).
