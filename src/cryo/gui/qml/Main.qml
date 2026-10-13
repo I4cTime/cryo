@@ -34,9 +34,11 @@ ApplicationWindow {
     readonly property color keycap: "#0B0F17"     // keyboard preview caps
 
     // Every looping animation (fan glyphs, badge pulses, lighting preview)
-    // runs only while the window is actually on screen: closed to the tray
-    // or minimized, the GUI must cost nothing.
+    // runs only while the window is on screen and focused: closed to the
+    // tray, minimized or sitting unfocused, they freeze in place and the GUI
+    // costs no more than its 1 Hz telemetry repaints.
     readonly property bool live: root.visible
+                                 && root.active
                                  && root.visibility !== Window.Minimized
                                  && root.visibility !== Window.Hidden
 
