@@ -61,6 +61,10 @@ ApplicationWindow {
         "performance": "Performance", "gmode": "G-Mode", "custom": "Custom",
         "low-power": "Low Power"
     })
+    // One-row grid labels: up to 7 modes share 400 px at the minimum width.
+    readonly property var profileShortLabels: ({
+        "performance": "Perf", "low-power": "Low Pwr"
+    })
 
     // ---------- reusable pieces ----------
 
@@ -109,10 +113,14 @@ ApplicationWindow {
         id: mode
         property string name
         property string glyph
-        property string label
+        property string label            // full name (tooltip)
+        property string shortLabel       // fits a 1/7th-width cell
         readonly property bool active: daemon.profile === name
+        // Equal-width cells: every mode shares one row, whatever its label.
         Layout.fillWidth: true
-        Layout.preferredHeight: 72
+        Layout.preferredWidth: 1
+        Layout.minimumWidth: 0
+        Layout.preferredHeight: 56
         radius: 12
         color: active ? Qt.alpha(root.cyan, 0.10) : root.panel
         border.color: active ? root.cyan : root.panelBorder
@@ -144,26 +152,40 @@ ApplicationWindow {
 
         Column {
             anchors.centerIn: parent
-            spacing: 4
+            width: parent.width - 6
+            spacing: 3
             Label {
+                // Fixed box: emoji glyphs differ in height, labels stay aligned.
                 anchors.horizontalCenter: parent.horizontalCenter
+                height: 20
+                verticalAlignment: Text.AlignVCenter
                 text: mode.glyph
-                font.pixelSize: 20
+                font.pixelSize: 16
                 color: mode.active ? root.cyan : root.muted
             }
             Label {
-                anchors.horizontalCenter: parent.horizontalCenter
-                text: mode.label
-                font.pixelSize: 11
+                width: parent.width
+                horizontalAlignment: Text.AlignHCenter
+                text: mode.shortLabel
+                font.pixelSize: 10
+                // Shrinks rather than clips if a cell gets narrower still.
+                fontSizeMode: Text.HorizontalFit
+                minimumPixelSize: 8
+                elide: Text.ElideRight
                 font.weight: mode.active ? Font.Medium : Font.Normal
                 color: mode.active ? root.fg : root.muted
             }
         }
         MouseArea {
+            id: modeArea
             anchors.fill: parent
+            hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
             onClicked: daemon.setProfile(mode.name)
         }
+        ToolTip.visible: modeArea.containsMouse && mode.shortLabel !== mode.label
+        ToolTip.delay: 400
+        ToolTip.text: mode.label
         Behavior on border.color { ColorAnimation { duration: 150 } }
         Behavior on color { ColorAnimation { duration: 150 } }
     }
@@ -1187,11 +1209,10 @@ ApplicationWindow {
             // Power modes — rendered from the daemon's capability list, so
             // Legacy-profile or no-G-Mode machines see exactly what exists.
             SectionTitle { text: "POWER MODES"; visible: daemon.hasProfiles }
-            GridLayout {
+            // All modes on one row: compact, still glowing when active.
+            RowLayout {
                 Layout.fillWidth: true
-                columns: 3
-                rowSpacing: 10
-                columnSpacing: 10
+                spacing: 6
                 Repeater {
                     model: daemon.profiles
                     delegate: ModeButton {
@@ -1200,6 +1221,7 @@ ApplicationWindow {
                         glyph: root.profileGlyphs[modelData] ?? "❖"
                         label: root.profileLabels[modelData]
                                ?? (modelData.charAt(0).toUpperCase() + modelData.slice(1))
+                        shortLabel: root.profileShortLabels[modelData] ?? label
                     }
                 }
             }
