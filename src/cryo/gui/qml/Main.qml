@@ -487,7 +487,8 @@ ApplicationWindow {
                     smooth: true
                     mipmap: true
                 }
-                Column {
+                ColumnLayout {
+                    Layout.fillWidth: true
                     spacing: 2
                     Label {
                         text: "CRYO"
@@ -497,12 +498,13 @@ ApplicationWindow {
                         color: root.fg
                     }
                     Label {
+                        Layout.fillWidth: true
                         text: daemon.modelName || "Alienware command center"
                         color: root.muted
                         font.pixelSize: 12
+                        elide: Text.ElideRight
                     }
                 }
-                Item { Layout.fillWidth: true }
                 Rectangle {
                     visible: daemon.guard
                     radius: 6
@@ -772,12 +774,12 @@ ApplicationWindow {
                     spacing: 4
                     RowLayout {
                         Layout.fillWidth: true
-                        Column {
+                        ColumnLayout {
+                            Layout.fillWidth: true
                             spacing: 2
-                            Label { text: "Automatic fan curves"; color: root.fg; font.pixelSize: 13 }
-                            Label { text: "Off = manual boost sliders"; color: root.muted; font.pixelSize: 11 }
+                            Label { Layout.fillWidth: true; wrapMode: Text.WordWrap; text: "Automatic fan curves"; color: root.fg; font.pixelSize: 13 }
+                            Label { Layout.fillWidth: true; wrapMode: Text.WordWrap; text: "Off = manual boost sliders"; color: root.muted; font.pixelSize: 11 }
                         }
-                        Item { Layout.fillWidth: true }
                         CryoSwitch {
                             id: curvesSwitch
                             enabled: daemon.hasBoost
@@ -844,10 +846,13 @@ ApplicationWindow {
                     RowLayout {
                         Layout.fillWidth: true
                         visible: daemon.hasBoost
-                        Column {
+                        ColumnLayout {
+                            Layout.fillWidth: true
                             spacing: 2
-                            Label { text: "Curves & Thermal Guard"; color: root.fg; font.pixelSize: 13 }
+                            Label { Layout.fillWidth: true; wrapMode: Text.WordWrap; text: "Curves & Thermal Guard"; color: root.fg; font.pixelSize: 13 }
                             Label {
+                                Layout.fillWidth: true
+                                wrapMode: Text.WordWrap
                                 text: curveBody.visible
                                       ? "Points are °C → boost %. Curves apply in Custom mode; the guard trips in any mode."
                                       : "Edit the curve points and the guard's trip temperatures."
@@ -855,7 +860,6 @@ ApplicationWindow {
                                 font.pixelSize: 11
                             }
                         }
-                        Item { Layout.fillWidth: true }
                         CryoButton {
                             label: curveBody.visible ? "Done" : "Edit"
                             onClicked: curveBody.visible = !curveBody.visible
@@ -941,12 +945,12 @@ ApplicationWindow {
                     RowLayout {
                         Layout.fillWidth: true
                         visible: daemon.hasTurbo
-                        Column {
+                        ColumnLayout {
+                            Layout.fillWidth: true
                             spacing: 2
-                            Label { text: "Turbo Boost"; color: root.fg; font.pixelSize: 13 }
-                            Label { text: "Off pins every core at its base clock — quiet and cool, slower."; color: root.muted; font.pixelSize: 11 }
+                            Label { Layout.fillWidth: true; wrapMode: Text.WordWrap; text: "Turbo Boost"; color: root.fg; font.pixelSize: 13 }
+                            Label { Layout.fillWidth: true; wrapMode: Text.WordWrap; text: "Off pins every core at its base clock — quiet and cool, slower."; color: root.muted; font.pixelSize: 11 }
                         }
-                        Item { Layout.fillWidth: true }
                         CryoSwitch {
                             checked: daemon.turbo
                             Binding on checked { value: daemon.turbo }
@@ -957,10 +961,13 @@ ApplicationWindow {
                     RowLayout {
                         Layout.fillWidth: true
                         visible: daemon.hasCpuCap
-                        Column {
+                        ColumnLayout {
+                            Layout.fillWidth: true
                             spacing: 2
-                            Label { text: "Performance cap per mode"; color: root.fg; font.pixelSize: 13 }
+                            Label { Layout.fillWidth: true; wrapMode: Text.WordWrap; text: "Performance cap per mode"; color: root.fg; font.pixelSize: 13 }
                             Label {
+                                Layout.fillWidth: true
+                                wrapMode: Text.WordWrap
                                 // Every configured mode at a glance, so you don't have
                                 // to switch modes to see what each one is capped at.
                                 property var caps: daemon.cpuCapProfiles
@@ -977,7 +984,6 @@ ApplicationWindow {
                                 font.pixelSize: 11
                             }
                         }
-                        Item { Layout.fillWidth: true }
                         CryoSwitch {
                             id: capSwitch
                             checked: daemon.cpuCapEnabled
@@ -1043,10 +1049,13 @@ ApplicationWindow {
                     spacing: 4
                     RowLayout {
                         Layout.fillWidth: true
-                        Column {
+                        ColumnLayout {
+                            Layout.fillWidth: true
                             spacing: 2
-                            Label { text: "Auto profiles"; color: root.fg; font.pixelSize: 13 }
+                            Label { Layout.fillWidth: true; wrapMode: Text.WordWrap; text: "Auto profiles"; color: root.fg; font.pixelSize: 13 }
                             Label {
+                                Layout.fillWidth: true
+                                wrapMode: Text.WordWrap
                                 // From the daemon's config, not a fixed string.
                                 property var rules: daemon.autoRules
                                 function label(name) { return name ? (root.profileLabels[name] || name) : "—" }
@@ -1057,7 +1066,6 @@ ApplicationWindow {
                                 font.pixelSize: 11
                             }
                         }
-                        Item { Layout.fillWidth: true }
                         CryoSwitch {
                             checked: daemon.autoEnabled
                             Binding on checked { value: daemon.autoEnabled }
