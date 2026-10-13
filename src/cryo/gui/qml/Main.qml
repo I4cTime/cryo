@@ -9,9 +9,13 @@ ApplicationWindow {
     height: 860
     minimumWidth: 440
     title: daemon.modelName ? "Cryo — " + daemon.modelName : "Cryo"
-    color: "#000102"
+    color: root.bg
+    // Controls (and every Label) inherit the window font; Outfit is the UI
+    // face, JetBrains Mono / tabular figures keep live numbers from jittering.
+    font.family: root.uiFont
 
     // ---- quantum fluidity tokens (lib/palette.ts equivalents) ----
+    readonly property color bg: "#000102"
     readonly property color cyan: "#00D1FF"
     readonly property color violet: "#7B2DFF"
     readonly property color violetText: "#A082FF"
@@ -19,6 +23,20 @@ ApplicationWindow {
     readonly property color muted: "#828690"
     readonly property color panel: "#090D14"
     readonly property color panelBorder: "#1A2233"
+    readonly property color track: "#141A26"
+    readonly property color hot: "#FF5470"
+    readonly property color warn: "#FFB300"
+    readonly property color ok: "#3DDC97"
+
+    // ---- type ----
+    readonly property string uiFont: outfitRegular.font.family
+    readonly property string monoFont: monoRegular.font.family
+    FontLoader { id: outfitRegular; source: "../assets/fonts/Outfit-Regular.ttf" }
+    FontLoader { source: "../assets/fonts/Outfit-Medium.ttf" }
+    FontLoader { source: "../assets/fonts/Outfit-SemiBold.ttf" }
+    FontLoader { source: "../assets/fonts/Outfit-Bold.ttf" }
+    FontLoader { id: monoRegular; source: "../assets/fonts/JetBrainsMono-Regular.ttf" }
+    FontLoader { source: "../assets/fonts/JetBrainsMono-Bold.ttf" }
 
     // ---- power-mode presentation (grid renders daemon.profiles) ----
     readonly property var profileGlyphs: ({
@@ -33,11 +51,16 @@ ApplicationWindow {
 
     // ---------- reusable pieces ----------
 
-    component SectionTitle: Text {
+    component SectionTitle: Label {
         color: root.muted
         font.pixelSize: 11
         font.letterSpacing: 2
         font.bold: true
+    }
+
+    // Live-changing figures: monospace so digits never shift sideways.
+    component Mono: Label {
+        font.family: root.monoFont
     }
 
     component Panel: Rectangle {
@@ -63,13 +86,13 @@ ApplicationWindow {
         Column {
             anchors.centerIn: parent
             spacing: 4
-            Text {
+            Label {
                 anchors.horizontalCenter: parent.horizontalCenter
                 text: mode.glyph
                 font.pixelSize: 20
                 color: mode.active ? root.cyan : root.muted
             }
-            Text {
+            Label {
                 anchors.horizontalCenter: parent.horizontalCenter
                 text: mode.label
                 font.pixelSize: 11
@@ -129,16 +152,16 @@ ApplicationWindow {
             anchors.verticalCenter: parent.verticalCenter
             anchors.leftMargin: 16
             spacing: 2
-            Text { text: tile.label; color: root.muted; font.pixelSize: 11; font.letterSpacing: 1.5 }
-            Text {
+            Label { text: tile.label; color: root.muted; font.pixelSize: 11; font.letterSpacing: 1.5 }
+            Label {
                 text: tile.temp > 0 ? tile.temp.toFixed(0) + "°C" : "—"
-                color: tile.temp >= 85 ? "#FF5470" : root.fg
+                color: tile.temp >= 85 ? root.hot : root.fg
                 font.pixelSize: 30
                 font.bold: true
             }
-            Text {
+            Label {
                 text: tile.rpm + " rpm" + (tile.peak > 0 ? "  ·  peak " + tile.peak.toFixed(0) + "°" : "")
-                color: tile.peak >= 88 ? "#FF5470" : root.muted
+                color: tile.peak >= 88 ? root.hot : root.muted
                 font.pixelSize: 11
             }
         }
@@ -154,7 +177,7 @@ ApplicationWindow {
             width: control.availableWidth
             height: 5
             radius: 3
-            color: "#141A26"
+            color: root.track
             Rectangle {
                 width: control.visualPosition * parent.width
                 height: parent.height
@@ -182,7 +205,7 @@ ApplicationWindow {
             implicitWidth: 40; implicitHeight: 22; radius: 11
             x: sw.leftPadding
             y: parent.height / 2 - height / 2
-            color: sw.checked ? Qt.alpha(root.cyan, 0.35) : "#141A26"
+            color: sw.checked ? Qt.alpha(root.cyan, 0.35) : root.track
             border.color: sw.checked ? root.cyan : root.panelBorder
             Rectangle {
                 x: sw.checked ? parent.width - width - 3 : 3
@@ -198,6 +221,7 @@ ApplicationWindow {
         id: spin
         editable: true
         font.pixelSize: 12
+        font.features: { "tnum": 1 }
         implicitWidth: 92
         implicitHeight: 28
         contentItem: TextInput {
@@ -212,19 +236,19 @@ ApplicationWindow {
             selectByMouse: true
         }
         background: Rectangle {
-            color: "#141A26"
+            color: root.track
             border.color: spin.activeFocus ? root.cyan : root.panelBorder
             radius: 6
         }
         up.indicator: Rectangle {
             x: spin.width - width; height: spin.height; width: 22
             color: "transparent"
-            Text { anchors.centerIn: parent; text: "+"; color: root.muted; font.pixelSize: 14 }
+            Label { anchors.centerIn: parent; text: "+"; color: root.muted; font.pixelSize: 14 }
         }
         down.indicator: Rectangle {
             x: 0; height: spin.height; width: 22
             color: "transparent"
-            Text { anchors.centerIn: parent; text: "−"; color: root.muted; font.pixelSize: 14 }
+            Label { anchors.centerIn: parent; text: "−"; color: root.muted; font.pixelSize: 14 }
         }
     }
 
@@ -236,10 +260,10 @@ ApplicationWindow {
         implicitHeight: 28
         implicitWidth: btnText.implicitWidth + 24
         radius: 6
-        color: accent ? Qt.alpha(root.cyan, 0.15) : "#141A26"
+        color: accent ? Qt.alpha(root.cyan, 0.15) : root.track
         border.color: accent ? root.cyan : root.panelBorder
         opacity: enabled ? 1.0 : 0.4
-        Text {
+        Label {
             id: btnText
             anchors.centerIn: parent
             text: btn.label
@@ -276,9 +300,9 @@ ApplicationWindow {
 
         RowLayout {
             Layout.fillWidth: true
-            Text { text: editor.group.toUpperCase() + " curve"; color: root.fg; font.pixelSize: 12; font.bold: true }
+            Label { text: editor.group.toUpperCase() + " curve"; color: root.fg; font.pixelSize: 12; font.bold: true }
             Item { Layout.fillWidth: true }
-            Text { text: "°C → boost %"; color: root.muted; font.pixelSize: 11 }
+            Label { text: "°C → boost %"; color: root.muted; font.pixelSize: 11 }
         }
 
         // The curve as a chart: temperature 30-110 °C across, boost 0-100 %
@@ -297,8 +321,8 @@ ApplicationWindow {
                 const ctx = getContext("2d")
                 ctx.reset()
                 // grid
-                ctx.strokeStyle = "#141A26"; ctx.lineWidth = 1
-                ctx.fillStyle = root.muted; ctx.font = "9px sans-serif"
+                ctx.strokeStyle = root.track; ctx.lineWidth = 1
+                ctx.fillStyle = root.muted; ctx.font = "9px \"" + root.monoFont + "\""
                 for (const b of [0, 50, 100]) {
                     ctx.beginPath(); ctx.moveTo(px(tLo), py(b)); ctx.lineTo(px(tHi), py(b)); ctx.stroke()
                     ctx.fillText(b + "%", 2, py(b) + 3)
@@ -333,20 +357,20 @@ ApplicationWindow {
                 // this line in every mode, whatever the curve says.
                 const trip = editor.group === "gpu" ? daemon.guardGpuTrip : daemon.guardCpuTrip
                 if (trip > tLo && trip < tHi) {
-                    ctx.strokeStyle = "#FFB300"; ctx.lineWidth = 1
+                    ctx.strokeStyle = root.warn; ctx.lineWidth = 1
                     ctx.setLineDash([2, 4])
                     ctx.beginPath(); ctx.moveTo(px(trip), py(0)); ctx.lineTo(px(trip), py(100)); ctx.stroke()
                     ctx.setLineDash([])
-                    ctx.fillStyle = "#FFB300"
+                    ctx.fillStyle = root.warn
                     ctx.fillText("guard " + trip + "°", px(trip) - 44, py(100) + 9)
                 }
                 // live temperature marker
                 if (liveTemp > 0) {
-                    ctx.strokeStyle = "#FF5470"; ctx.lineWidth = 1
+                    ctx.strokeStyle = root.hot; ctx.lineWidth = 1
                     ctx.setLineDash([3, 3])
                     ctx.beginPath(); ctx.moveTo(px(liveTemp), py(0)); ctx.lineTo(px(liveTemp), py(100)); ctx.stroke()
                     ctx.setLineDash([])
-                    ctx.fillStyle = "#FF5470"
+                    ctx.fillStyle = root.hot
                     ctx.fillText(liveTemp.toFixed(0) + "°", px(liveTemp) + 3, py(100) + 9)
                 }
             }
@@ -375,7 +399,7 @@ ApplicationWindow {
                     from: 0; to: 110; value: temp
                     onValueModified: { points.setProperty(index, "temp", value); editor.dirty = true }
                 }
-                Text { text: "→"; color: root.muted; font.pixelSize: 12 }
+                Label { text: "→"; color: root.muted; font.pixelSize: 12 }
                 CryoSpin {
                     from: 0; to: 100; value: boost
                     onValueModified: { points.setProperty(index, "boost", value); editor.dirty = true }
@@ -465,14 +489,14 @@ ApplicationWindow {
                 }
                 Column {
                     spacing: 2
-                    Text {
+                    Label {
                         text: "CRYO"
                         font.pixelSize: 26
                         font.bold: true
                         font.letterSpacing: 6
                         color: root.fg
                     }
-                    Text {
+                    Label {
                         text: daemon.modelName || "Alienware command center"
                         color: root.muted
                         font.pixelSize: 12
@@ -482,15 +506,15 @@ ApplicationWindow {
                 Rectangle {
                     visible: daemon.guard
                     radius: 6
-                    color: Qt.alpha("#FF5470", 0.2)
-                    border.color: "#FF5470"
+                    color: Qt.alpha(root.hot, 0.2)
+                    border.color: root.hot
                     width: guardText.width + 16
                     height: 24
-                    Text {
+                    Label {
                         id: guardText
                         anchors.centerIn: parent
                         text: "GUARD"
-                        color: "#FF5470"
+                        color: root.hot
                         font.pixelSize: 10
                         font.bold: true
                         font.letterSpacing: 2
@@ -503,7 +527,7 @@ ApplicationWindow {
                     border.color: root.violetText
                     width: gamingText.width + 16
                     height: 24
-                    Text {
+                    Label {
                         id: gamingText
                         anchors.centerIn: parent
                         text: "GAMING"
@@ -515,7 +539,7 @@ ApplicationWindow {
                 }
                 Rectangle {
                     width: 10; height: 10; radius: 5
-                    color: daemon.connected ? "#3DDC97" : "#FF5470"
+                    color: daemon.connected ? root.ok : root.hot
                     ToolTip.visible: dotArea.containsMouse
                     ToolTip.text: daemon.connected ? "cryod connected" : "cryod unreachable"
                     MouseArea { id: dotArea; anchors.fill: parent; hoverEnabled: true }
@@ -530,15 +554,15 @@ ApplicationWindow {
                 Layout.fillWidth: true
                 implicitHeight: errorText.implicitHeight + 16
                 radius: 8
-                color: Qt.alpha("#FF5470", 0.12)
-                border.color: "#FF5470"
+                color: Qt.alpha(root.hot, 0.12)
+                border.color: root.hot
                 border.width: 1
-                Text {
+                Label {
                     id: errorText
                     anchors.fill: parent
                     anchors.margins: 8
                     text: ""
-                    color: "#FF5470"
+                    color: root.hot
                     font.pixelSize: 11
                     wrapMode: Text.WordWrap
                     verticalAlignment: Text.AlignVCenter
@@ -582,13 +606,13 @@ ApplicationWindow {
                 Layout.fillWidth: true
                 visible: !daemon.hasThermals || !daemon.hasProfiles
                 implicitHeight: limitedText.height + 24
-                border.color: "#FFB300"
-                Text {
+                border.color: root.warn
+                Label {
                     id: limitedText
                     x: 14; y: 12
                     width: parent.width - 28
                     wrapMode: Text.WordWrap
-                    color: "#FFB300"
+                    color: root.warn
                     font.pixelSize: 11
                     text: "Limited mode — the alienware-wmi driver doesn't expose "
                           + (!daemon.hasThermals && !daemon.hasProfiles ? "fans, temperatures or power modes"
@@ -621,11 +645,11 @@ ApplicationWindow {
             RowLayout {
                 Layout.fillWidth: true
                 spacing: 8
-                Text { text: "dGPU load"; color: root.muted; font.pixelSize: 11 }
+                Label { text: "dGPU load"; color: root.muted; font.pixelSize: 11 }
                 Rectangle {
                     Layout.fillWidth: true
                     height: 5; radius: 3
-                    color: "#141A26"
+                    color: root.track
                     Rectangle {
                         width: parent.width * daemon.gpuUtil / 100
                         height: parent.height; radius: 3
@@ -633,7 +657,7 @@ ApplicationWindow {
                         Behavior on width { NumberAnimation { duration: 300 } }
                     }
                 }
-                Text { text: daemon.gpuUtil + "%"; color: root.fg; font.pixelSize: 11 }
+                Mono { text: daemon.gpuUtil + "%"; color: root.fg; font.pixelSize: 11 }
             }
 
             // VRAM — sparkline scaled to the card's full capacity, so a
@@ -682,10 +706,11 @@ ApplicationWindow {
                         Layout.fillWidth: true
                         Column {
                             spacing: 2
-                            Text { text: "VRAM"; color: root.muted; font.pixelSize: 11; font.letterSpacing: 1.5 }
-                            Text {
+                            Label { text: "VRAM"; color: root.muted; font.pixelSize: 11; font.letterSpacing: 1.5 }
+                            Label {
                                 text: (daemon.vramUsed / 1024).toFixed(1) + " GB"
-                                color: daemon.vramUsed / daemon.vramTotal >= 0.9 ? "#FF5470" : root.fg
+                                font.features: { "tnum": 1 }
+                                color: daemon.vramUsed / daemon.vramTotal >= 0.9 ? root.hot : root.fg
                                 font.pixelSize: 20
                                 font.bold: true
                             }
@@ -693,14 +718,14 @@ ApplicationWindow {
                         Item { Layout.fillWidth: true }
                         Column {
                             spacing: 2
-                            Text {
+                            Mono {
                                 anchors.right: parent.right
                                 text: "peak " + (daemon.vramPeak / 1024).toFixed(1)
                                       + " · of " + (daemon.vramTotal / 1024).toFixed(1) + " GB"
                                 color: root.muted
                                 font.pixelSize: 11
                             }
-                            Text {
+                            Mono {
                                 anchors.right: parent.right
                                 visible: daemon.gpuPower > 0
                                 text: daemon.gpuPower.toFixed(0) + " W · "
@@ -717,14 +742,14 @@ ApplicationWindow {
                             required property var modelData
                             Layout.fillWidth: true
                             spacing: 8
-                            Text {
+                            Label {
                                 text: modelData.name
                                 color: root.muted
                                 font.pixelSize: 10
                                 elide: Text.ElideMiddle
                                 Layout.fillWidth: true
                             }
-                            Text {
+                            Mono {
                                 text: (modelData.vram_mb / 1024).toFixed(1) + " GB"
                                 color: root.fg
                                 font.pixelSize: 10
@@ -749,8 +774,8 @@ ApplicationWindow {
                         Layout.fillWidth: true
                         Column {
                             spacing: 2
-                            Text { text: "Automatic fan curves"; color: root.fg; font.pixelSize: 13 }
-                            Text { text: "Off = manual boost sliders"; color: root.muted; font.pixelSize: 11 }
+                            Label { text: "Automatic fan curves"; color: root.fg; font.pixelSize: 13 }
+                            Label { text: "Off = manual boost sliders"; color: root.muted; font.pixelSize: 11 }
                         }
                         Item { Layout.fillWidth: true }
                         CryoSwitch {
@@ -767,7 +792,7 @@ ApplicationWindow {
                     RowLayout {
                         Layout.fillWidth: true
                         spacing: 10
-                        Text {
+                        Label {
                             text: !daemon.hasBoost
                                   ? "Fan boost is not supported by this model's firmware — curves and manual boost are unavailable."
                                   : daemon.profile === "custom"
@@ -775,7 +800,7 @@ ApplicationWindow {
                                      ? "Curves active — boosts follow temperature."
                                      : "Manual boost — drag the sliders.")
                                   : "Fans follow the firmware in this mode. Custom mode hands them to Cryo."
-                            color: daemon.hasBoost ? root.muted : "#FFB300"
+                            color: daemon.hasBoost ? root.muted : root.warn
                             font.pixelSize: 11
                             Layout.fillWidth: true
                             wrapMode: Text.WordWrap
@@ -791,7 +816,7 @@ ApplicationWindow {
                         Layout.fillWidth: true
                         enabled: daemon.hasBoost && daemon.profile === "custom" && !curvesSwitch.checked
                         opacity: enabled ? 1.0 : 0.4
-                        Text { text: "CPU boost"; color: root.muted; font.pixelSize: 12; Layout.preferredWidth: 70 }
+                        Label { text: "CPU boost"; color: root.muted; font.pixelSize: 12; Layout.preferredWidth: 70 }
                         CryoSlider {
                             id: cpuBoost
                             value: root.fanBoost("cpu")
@@ -800,20 +825,20 @@ ApplicationWindow {
                             Binding on value { when: !cpuBoost.pressed; value: root.fanBoost("cpu") }
                             onPressedChanged: if (!pressed) daemon.setBoost("cpu", Math.round(value))
                         }
-                        Text { text: Math.round(cpuBoost.value) + "%"; color: root.fg; font.pixelSize: 12; Layout.preferredWidth: 36 }
+                        Label { text: Math.round(cpuBoost.value) + "%"; color: root.fg; font.pixelSize: 12; font.features: { "tnum": 1 }; Layout.preferredWidth: 36 }
                     }
                     RowLayout {
                         Layout.fillWidth: true
                         enabled: daemon.hasBoost && daemon.profile === "custom" && !curvesSwitch.checked
                         opacity: enabled ? 1.0 : 0.4
-                        Text { text: "GPU boost"; color: root.muted; font.pixelSize: 12; Layout.preferredWidth: 70 }
+                        Label { text: "GPU boost"; color: root.muted; font.pixelSize: 12; Layout.preferredWidth: 70 }
                         CryoSlider {
                             id: gpuBoost
                             value: root.fanBoost("gpu")
                             Binding on value { when: !gpuBoost.pressed; value: root.fanBoost("gpu") }
                             onPressedChanged: if (!pressed) daemon.setBoost("gpu", Math.round(value))
                         }
-                        Text { text: Math.round(gpuBoost.value) + "%"; color: root.fg; font.pixelSize: 12; Layout.preferredWidth: 36 }
+                        Label { text: Math.round(gpuBoost.value) + "%"; color: root.fg; font.pixelSize: 12; font.features: { "tnum": 1 }; Layout.preferredWidth: 36 }
                     }
                     Rectangle { Layout.fillWidth: true; height: 1; color: root.panelBorder; Layout.topMargin: 6; visible: daemon.hasBoost }
                     RowLayout {
@@ -821,8 +846,8 @@ ApplicationWindow {
                         visible: daemon.hasBoost
                         Column {
                             spacing: 2
-                            Text { text: "Curves & Thermal Guard"; color: root.fg; font.pixelSize: 13 }
-                            Text {
+                            Label { text: "Curves & Thermal Guard"; color: root.fg; font.pixelSize: 13 }
+                            Label {
                                 text: curveBody.visible
                                       ? "Points are °C → boost %. Curves apply in Custom mode; the guard trips in any mode."
                                       : "Edit the curve points and the guard's trip temperatures."
@@ -865,21 +890,21 @@ ApplicationWindow {
                                 function onConfigChanged() { if (!tuning.dirty) tuning.load() }
                             }
                             Component.onCompleted: load()
-                            Text { text: "Tuning & Thermal Guard"; color: root.fg; font.pixelSize: 12; font.bold: true }
+                            Label { text: "Tuning & Thermal Guard"; color: root.fg; font.pixelSize: 12; font.bold: true }
                             GridLayout {
                                 columns: 4
                                 columnSpacing: 8
                                 rowSpacing: 6
                                 Layout.fillWidth: true
-                                Text { text: "Hysteresis °C"; color: root.muted; font.pixelSize: 11 }
+                                Label { text: "Hysteresis °C"; color: root.muted; font.pixelSize: 11 }
                                 CryoSpin { id: hystSpin; from: 0; to: 15; onValueModified: tuning.dirty = true }
-                                Text { text: "Min step %"; color: root.muted; font.pixelSize: 11 }
+                                Label { text: "Min step %"; color: root.muted; font.pixelSize: 11 }
                                 CryoSpin { id: stepSpin; from: 1; to: 25; onValueModified: tuning.dirty = true }
-                                Text { text: "CPU trip °C"; color: root.muted; font.pixelSize: 11 }
+                                Label { text: "CPU trip °C"; color: root.muted; font.pixelSize: 11 }
                                 CryoSpin { id: cpuTripSpin; from: 60; to: 105; onValueModified: tuning.dirty = true }
-                                Text { text: "GPU trip °C"; color: root.muted; font.pixelSize: 11 }
+                                Label { text: "GPU trip °C"; color: root.muted; font.pixelSize: 11 }
                                 CryoSpin { id: gpuTripSpin; from: 60; to: 105; onValueModified: tuning.dirty = true }
-                                Text { text: "Release °C"; color: root.muted; font.pixelSize: 11 }
+                                Label { text: "Release °C"; color: root.muted; font.pixelSize: 11 }
                                 CryoSpin { id: releaseSpin; from: 1; to: 30; onValueModified: tuning.dirty = true }
                             }
                             RowLayout {
@@ -918,8 +943,8 @@ ApplicationWindow {
                         visible: daemon.hasTurbo
                         Column {
                             spacing: 2
-                            Text { text: "Turbo Boost"; color: root.fg; font.pixelSize: 13 }
-                            Text { text: "Off pins every core at its base clock — quiet and cool, slower."; color: root.muted; font.pixelSize: 11 }
+                            Label { text: "Turbo Boost"; color: root.fg; font.pixelSize: 13 }
+                            Label { text: "Off pins every core at its base clock — quiet and cool, slower."; color: root.muted; font.pixelSize: 11 }
                         }
                         Item { Layout.fillWidth: true }
                         CryoSwitch {
@@ -934,8 +959,8 @@ ApplicationWindow {
                         visible: daemon.hasCpuCap
                         Column {
                             spacing: 2
-                            Text { text: "Performance cap per mode"; color: root.fg; font.pixelSize: 13 }
-                            Text {
+                            Label { text: "Performance cap per mode"; color: root.fg; font.pixelSize: 13 }
+                            Label {
                                 // Every configured mode at a glance, so you don't have
                                 // to switch modes to see what each one is capped at.
                                 property var caps: daemon.cpuCapProfiles
@@ -960,7 +985,7 @@ ApplicationWindow {
                             onToggled: daemon.setCpuCapEnabled(checked)
                         }
                     }
-                    Text {
+                    Label {
                         // Machine-specific: the GHz figure comes from this
                         // CPU's cpufreq max, never from a fixed model.
                         visible: daemon.hasCpuCap
@@ -978,7 +1003,7 @@ ApplicationWindow {
                         visible: daemon.hasCpuCap
                         enabled: capSwitch.checked
                         opacity: enabled ? 1.0 : 0.4
-                        Text {
+                        Label {
                             text: daemon.hasProfiles ? (root.profileLabels[daemon.profile] || daemon.profile) : "Default"
                             color: root.muted
                             font.pixelSize: 12
@@ -992,7 +1017,8 @@ ApplicationWindow {
                             Binding on value { when: !capSlider.pressed; value: daemon.cpuCap }
                             onPressedChanged: if (!pressed) daemon.setCpuCap(Math.round(value))
                         }
-                        Text {
+                        Label {
+                            font.features: { "tnum": 1 }
                             text: Math.round(capSlider.value) + "%"
                                   + (daemon.cpuMaxMhz > 0
                                      ? "  ≈ " + (Math.round(capSlider.value) / 100 * daemon.cpuMaxMhz / 1000).toFixed(1) + " GHz"
@@ -1019,8 +1045,8 @@ ApplicationWindow {
                         Layout.fillWidth: true
                         Column {
                             spacing: 2
-                            Text { text: "Auto profiles"; color: root.fg; font.pixelSize: 13 }
-                            Text {
+                            Label { text: "Auto profiles"; color: root.fg; font.pixelSize: 13 }
+                            Label {
                                 // From the daemon's config, not a fixed string.
                                 property var rules: daemon.autoRules
                                 function label(name) { return name ? (root.profileLabels[name] || name) : "—" }
@@ -1040,7 +1066,7 @@ ApplicationWindow {
                     }
                     RowLayout {
                         spacing: 6
-                        Text {
+                        Label {
                             text: (daemon.ac ? "⚡ On AC power" : "🔋 On battery")
                                   + (daemon.gaming ? "  ·  🎮 game detected" : "")
                             color: root.muted
@@ -1088,7 +1114,7 @@ ApplicationWindow {
                                 radius: 14
                                 color: active ? Qt.alpha(root.cyan, 0.10) : root.panel
                                 border.color: active ? root.cyan : root.panelBorder
-                                Text {
+                                Label {
                                     id: fxText
                                     anchors.centerIn: parent
                                     text: fxChip.modelData.label
@@ -1106,7 +1132,7 @@ ApplicationWindow {
 
                     RowLayout {
                         spacing: 8
-                        Text { text: "Color"; color: root.muted; font.pixelSize: 11 }
+                        Label { text: "Color"; color: root.muted; font.pixelSize: 11 }
                         Repeater {
                             model: ["#00D1FF", "#7B2DFF", "#FF2D55", "#3DDC97", "#FFB300", "#F3F5F9"]
                             delegate: Rectangle {
@@ -1126,19 +1152,19 @@ ApplicationWindow {
 
                     RowLayout {
                         Layout.fillWidth: true
-                        Text { text: "Brightness"; color: root.muted; font.pixelSize: 12; Layout.preferredWidth: 70 }
+                        Label { text: "Brightness"; color: root.muted; font.pixelSize: 12; Layout.preferredWidth: 70 }
                         CryoSlider {
                             id: brightness
                             value: daemon.lightBrightness
                             Binding on value { when: !brightness.pressed; value: daemon.lightBrightness }
                             onPressedChanged: if (!pressed) daemon.setBrightness(Math.round(value))
                         }
-                        Text { text: Math.round(brightness.value) + "%"; color: root.fg; font.pixelSize: 12; Layout.preferredWidth: 36 }
+                        Label { text: Math.round(brightness.value) + "%"; color: root.fg; font.pixelSize: 12; font.features: { "tnum": 1 }; Layout.preferredWidth: 36 }
                     }
                 }
             }
 
-            Text {
+            Label {
                 Layout.fillWidth: true
                 text: daemon.connected
                       ? "cryod · " + daemon.profile + " profile"
