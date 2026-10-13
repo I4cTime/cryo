@@ -48,7 +48,6 @@ ApplicationWindow {
     FontLoader { source: "../assets/fonts/Outfit-SemiBold.ttf" }
     FontLoader { source: "../assets/fonts/Outfit-Bold.ttf" }
     FontLoader { id: monoRegular; source: "../assets/fonts/JetBrainsMono-Regular.ttf" }
-    FontLoader { source: "../assets/fonts/JetBrainsMono-Bold.ttf" }
 
     // ---- power-mode presentation (grid renders daemon.profiles) ----
     readonly property var profileGlyphs: ({
@@ -1750,6 +1749,25 @@ ApplicationWindow {
                                 radius: 14
                                 color: active ? Qt.alpha(root.cyan, 0.10) : root.panel
                                 border.color: active ? root.cyan : root.panelBorder
+                                Rectangle {
+                                    id: fxHaloSrc
+                                    anchors.fill: parent
+                                    radius: fxChip.radius
+                                    color: "transparent"
+                                    border.color: root.cyan
+                                    visible: false
+                                }
+                                MultiEffect {
+                                    // same neon halo as the active power mode
+                                    z: -1
+                                    visible: fxChip.active
+                                    source: fxHaloSrc
+                                    anchors.fill: fxHaloSrc
+                                    shadowEnabled: true
+                                    shadowColor: root.cyan
+                                    shadowBlur: 0.7
+                                    blurMax: 12
+                                }
                                 Label {
                                     id: fxText
                                     anchors.centerIn: parent
