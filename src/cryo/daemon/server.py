@@ -118,6 +118,8 @@ class Server:
             engine.latch_curves(None)
         config_mod.save_overrides(self.overrides)
         if "cpu_cap" in patch:
+            if patch["cpu_cap"].get("enabled") is False:
+                engine.release_cpu_cap()
             engine.apply_cpu_cap()
         if "fan_curves" in patch or "thermal_guard" in patch:
             # New points/thresholds: forget the old anchors so the next tick

@@ -1,6 +1,8 @@
 import QtQuick
 import QtQuick.Controls.Basic
 import QtQuick.Layouts
+import QtQuick.Shapes
+import QtQuick.Effects
 
 ApplicationWindow {
     id: root
@@ -9,9 +11,13 @@ ApplicationWindow {
     height: 860
     minimumWidth: 440
     title: daemon.modelName ? "Cryo — " + daemon.modelName : "Cryo"
-    color: "#000102"
+    color: root.bg
+    // Controls (and every Label) inherit the window font; Outfit is the UI
+    // face, JetBrains Mono / tabular figures keep live numbers from jittering.
+    font.family: root.uiFont
 
     // ---- quantum fluidity tokens (lib/palette.ts equivalents) ----
+    readonly property color bg: "#000102"
     readonly property color cyan: "#00D1FF"
     readonly property color violet: "#7B2DFF"
     readonly property color violetText: "#A082FF"
@@ -19,6 +25,31 @@ ApplicationWindow {
     readonly property color muted: "#828690"
     readonly property color panel: "#090D14"
     readonly property color panelBorder: "#1A2233"
+    readonly property color track: "#141A26"
+    readonly property color hot: "#FF5470"
+    readonly property color warn: "#FFB300"
+    readonly property color ok: "#3DDC97"
+    readonly property color shadow: "#000000"
+    readonly property color deck: "#06080D"       // keyboard preview deck
+    readonly property color keycap: "#0B0F17"     // keyboard preview caps
+
+    // Every looping animation (fan glyphs, badge pulses, lighting preview)
+    // runs only while the window is on screen and focused: closed to the
+    // tray, minimized or sitting unfocused, they freeze in place and the GUI
+    // costs no more than its 1 Hz telemetry repaints.
+    readonly property bool live: root.visible
+                                 && root.active
+                                 && root.visibility !== Window.Minimized
+                                 && root.visibility !== Window.Hidden
+
+    // ---- type ----
+    readonly property string uiFont: outfitRegular.font.family
+    readonly property string monoFont: monoRegular.font.family
+    FontLoader { id: outfitRegular; source: "../assets/fonts/Outfit-Regular.ttf" }
+    FontLoader { source: "../assets/fonts/Outfit-Medium.ttf" }
+    FontLoader { source: "../assets/fonts/Outfit-SemiBold.ttf" }
+    FontLoader { source: "../assets/fonts/Outfit-Bold.ttf" }
+    FontLoader { id: monoRegular; source: "../assets/fonts/JetBrainsMono-Regular.ttf" }
 
     // ---- power-mode presentation (grid renders daemon.profiles) ----
     readonly property var profileGlyphs: ({
@@ -30,61 +61,255 @@ ApplicationWindow {
         "performance": "Performance", "gmode": "G-Mode", "custom": "Custom",
         "low-power": "Low Power"
     })
+    // One-row grid labels: up to 7 modes share 400 px at the minimum width.
+    readonly property var profileShortLabels: ({
+        "performance": "Perf", "low-power": "Low Pwr"
+    })
 
     // ---------- reusable pieces ----------
 
-    component SectionTitle: Text {
+    component SectionTitle: Label {
         color: root.muted
         font.pixelSize: 11
         font.letterSpacing: 2
         font.bold: true
     }
 
+    // Live-changing figures: monospace so digits never shift sideways.
+    component Mono: Label {
+        font.family: root.monoFont
+    }
+
     component Panel: Rectangle {
+        id: panelRect
         color: root.panel
         border.color: root.panelBorder
         border.width: 1
         radius: 12
+
+        // Soft drop shadow. Blurs a hidden, content-free copy of the panel
+        // shape, so it re-renders only when the panel resizes.
+        Rectangle {
+            id: panelShadowSrc
+            anchors.fill: parent
+            radius: panelRect.radius
+            color: root.shadow
+            visible: false
+        }
+        MultiEffect {
+            z: -1
+            source: panelShadowSrc
+            anchors.fill: panelShadowSrc
+            shadowEnabled: true
+            shadowColor: root.shadow
+            shadowOpacity: 0.9
+            shadowBlur: 1.0
+            blurMax: 24
+            shadowVerticalOffset: 6
+        }
     }
 
     component ModeButton: Rectangle {
         id: mode
         property string name
         property string glyph
-        property string label
+        property string label            // full name (tooltip)
+        property string shortLabel       // fits a 1/7th-width cell
         readonly property bool active: daemon.profile === name
+        // Equal-width cells: every mode shares one row, whatever its label.
         Layout.fillWidth: true
-        Layout.preferredHeight: 72
+        Layout.preferredWidth: 1
+        Layout.minimumWidth: 0
+        Layout.preferredHeight: 56
         radius: 12
         color: active ? Qt.alpha(root.cyan, 0.10) : root.panel
         border.color: active ? root.cyan : root.panelBorder
         border.width: active ? 2 : 1
 
+        // Neon tube: a blurred copy of the active border, inside and out.
+        Rectangle {
+            id: modeHaloSrc
+            anchors.fill: parent
+            radius: mode.radius
+            color: "transparent"
+            border.color: root.cyan
+            border.width: 2
+            visible: false
+        }
+        MultiEffect {
+            z: -1
+            source: modeHaloSrc
+            anchors.fill: modeHaloSrc
+            opacity: mode.active ? 1 : 0
+            visible: opacity > 0
+            shadowEnabled: true
+            shadowColor: root.cyan
+            shadowOpacity: 1.0
+            shadowBlur: 0.9
+            blurMax: 20
+            Behavior on opacity { enabled: root.live; NumberAnimation { duration: 200 } }
+        }
+
         Column {
             anchors.centerIn: parent
-            spacing: 4
-            Text {
+            width: parent.width - 6
+            spacing: 3
+            Label {
+                // Fixed box: emoji glyphs differ in height, labels stay aligned.
                 anchors.horizontalCenter: parent.horizontalCenter
+                height: 20
+                verticalAlignment: Text.AlignVCenter
                 text: mode.glyph
-                font.pixelSize: 20
+                font.pixelSize: 16
                 color: mode.active ? root.cyan : root.muted
             }
-            Text {
-                anchors.horizontalCenter: parent.horizontalCenter
-                text: mode.label
-                font.pixelSize: 11
+            Label {
+                width: parent.width
+                horizontalAlignment: Text.AlignHCenter
+                text: mode.shortLabel
+                font.pixelSize: 10
+                // Shrinks rather than clips if a cell gets narrower still.
+                fontSizeMode: Text.HorizontalFit
+                minimumPixelSize: 8
+                elide: Text.ElideRight
+                font.weight: mode.active ? Font.Medium : Font.Normal
                 color: mode.active ? root.fg : root.muted
             }
         }
         MouseArea {
+            id: modeArea
             anchors.fill: parent
+            hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
             onClicked: daemon.setProfile(mode.name)
         }
+        ToolTip.visible: modeArea.containsMouse && mode.shortLabel !== mode.label
+        ToolTip.delay: 400
+        ToolTip.text: mode.label
         Behavior on border.color { ColorAnimation { duration: 150 } }
         Behavior on color { ColorAnimation { duration: 150 } }
     }
 
+    // Small fan whose rotor turns in proportion to the real RPM (~0.12°/s
+    // per rpm reads as spinning without strobing) and stops dead at 0.
+    component FanGlyph: Item {
+        id: fanGlyph
+        property int rpm
+        property color tint: root.cyan
+        property string animName          // objectName of the spin driver (for tests)
+        implicitWidth: 20
+        implicitHeight: 20
+        readonly property color ink: rpm > 0 ? tint : root.muted
+
+        Item {
+            // 24-unit design grid scaled to the glyph size
+            width: 24
+            height: 24
+            anchors.centerIn: parent
+            scale: fanGlyph.width / 24
+
+            Shape {
+                anchors.fill: parent
+                preferredRendererType: Shape.CurveRenderer
+                ShapePath {
+                    strokeColor: Qt.alpha(fanGlyph.ink, 0.45)
+                    strokeWidth: 1.4
+                    fillColor: "transparent"
+                    PathAngleArc { centerX: 12; centerY: 12; radiusX: 11.2; radiusY: 11.2; startAngle: 0; sweepAngle: 360 }
+                }
+            }
+            Shape {
+                id: rotor
+                anchors.fill: parent
+                preferredRendererType: Shape.CurveRenderer
+                // one ShapePath per blade: the curve renderer drops repeated
+                // subpaths that start at the same point
+                ShapePath {
+                    strokeColor: "transparent"
+                    fillColor: fanGlyph.ink
+                    PathSvg { path: "M 10.4 9.23 C 8.75 6.37 10 2.61 13.36 2.3 C 15.75 2.73 18.3 4.49 19.09 6.46 C 16.82 6.25 13.87 7.36 13.09 8.99 Z" }
+                }
+                ShapePath {
+                    strokeColor: "transparent"
+                    fillColor: fanGlyph.ink
+                    PathSvg { path: "M 14.77 10.4 C 17.63 8.75 21.39 10 21.7 13.36 C 21.27 15.75 19.51 18.3 17.54 19.09 C 17.75 16.82 16.64 13.87 15.01 13.09 Z" }
+                }
+                ShapePath {
+                    strokeColor: "transparent"
+                    fillColor: fanGlyph.ink
+                    PathSvg { path: "M 13.6 14.77 C 15.25 17.63 14 21.39 10.64 21.7 C 8.25 21.27 5.7 19.51 4.91 17.54 C 7.18 17.75 10.13 16.64 10.91 15.01 Z" }
+                }
+                ShapePath {
+                    strokeColor: "transparent"
+                    fillColor: fanGlyph.ink
+                    PathSvg { path: "M 9.23 13.6 C 6.37 15.25 2.61 14 2.3 10.64 C 2.73 8.25 4.49 5.7 6.46 4.91 C 6.25 7.18 7.36 10.13 8.99 10.91 Z" }
+                }
+                ShapePath {
+                    strokeColor: fanGlyph.ink
+                    strokeWidth: 1.2
+                    fillColor: root.panel
+                    PathAngleArc { centerX: 12; centerY: 12; radiusX: 2.4; radiusY: 2.4; startAngle: 0; sweepAngle: 360 }
+                }
+            }
+        }
+        FrameAnimation {
+            objectName: fanGlyph.animName
+            running: root.live && fanGlyph.visible && fanGlyph.rpm > 0
+            onTriggered: rotor.rotation = (rotor.rotation + fanGlyph.rpm * 0.12 * Math.min(frameTime, 0.1)) % 360
+        }
+    }
+
+    // Header status pill with a pulsing neon halo.
+    component Badge: Rectangle {
+        id: badge
+        property string text
+        property color tint: root.hot
+        property color ink: tint
+        property string pulseName         // objectName of the pulse (for tests)
+        // Opaque fill so the halo shows only outside the pill.
+        color: Qt.tint(root.bg, Qt.alpha(tint, 0.22))
+        border.color: ink
+        radius: 6
+        implicitWidth: badgeText.implicitWidth + 16
+        implicitHeight: 24
+
+        Rectangle {
+            id: badgeHaloSrc
+            anchors.fill: parent
+            radius: badge.radius
+            color: badge.tint
+            visible: false
+        }
+        MultiEffect {
+            id: badgeHalo
+            z: -1
+            source: badgeHaloSrc
+            anchors.fill: badgeHaloSrc
+            shadowEnabled: true
+            shadowColor: badge.tint
+            shadowBlur: 1.0
+            blurMax: 20
+            opacity: 0.35
+            SequentialAnimation on opacity {
+                objectName: badge.pulseName
+                running: root.live && badge.visible
+                loops: Animation.Infinite
+                NumberAnimation { to: 1.0; duration: 900; easing.type: Easing.InOutSine }
+                NumberAnimation { to: 0.35; duration: 900; easing.type: Easing.InOutSine }
+            }
+        }
+        Label {
+            id: badgeText
+            anchors.centerIn: parent
+            text: badge.text
+            color: badge.ink
+            font.pixelSize: 10
+            font.bold: true
+            font.letterSpacing: 2
+        }
+    }
+
+    // Temperature ring gauge over a gradient sparkline of the session.
     component StatTile: Panel {
         id: tile
         property string label
@@ -93,29 +318,60 @@ ApplicationWindow {
         property int rpm
         property var history: []
         property color accent: root.cyan
+        // Eased copy of `temp`: the number and the arc glide to each reading.
+        property real shown: temp
+        Behavior on shown {
+            enabled: root.live
+            NumberAnimation { duration: 700; easing.type: Easing.OutCubic }
+        }
+        readonly property real lo: 30
+        readonly property real hi: 100
+        function frac(t) { return Math.min(Math.max((t - lo) / (hi - lo), 0), 1) }
+        readonly property color arcColor: root.tempColor(shown)
         Layout.fillWidth: true
-        Layout.preferredHeight: 110
+        Layout.preferredHeight: 128
 
         Canvas {
             id: spark
             anchors.fill: parent
             anchors.margins: 1
-            opacity: 0.35
             onPaint: {
                 const ctx = getContext("2d")
                 ctx.reset()
                 const h = tile.history
                 if (!h || h.length < 2)
                     return
-                ctx.strokeStyle = tile.accent
-                ctx.lineWidth = 1.5
+                // keep the fill inside the tile's rounded corners
                 ctx.beginPath()
-                const lo = 30, hi = 100
+                ctx.roundedRect(0, 0, width, height, tile.radius - 1, tile.radius - 1)
+                ctx.clip()
+                // 30-100 °C mapped onto the lower part of the tile, under the readouts
+                const band = height * 0.7
+                const pts = []
+                let top = height
                 for (let i = 0; i < h.length; i++) {
                     const x = i / (h.length - 1) * width
-                    const y = height - (Math.min(Math.max(h[i], lo), hi) - lo) / (hi - lo) * height
-                    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y)
+                    const y = height - tile.frac(h[i]) * band
+                    pts.push([x, y])
+                    top = Math.min(top, y)
                 }
+                const fill = ctx.createLinearGradient(0, top, 0, height)
+                fill.addColorStop(0, Qt.alpha(tile.accent, 0.22))
+                fill.addColorStop(1, Qt.alpha(tile.accent, 0.0))
+                ctx.beginPath()
+                ctx.moveTo(0, height)
+                for (const p of pts)
+                    ctx.lineTo(p[0], p[1])
+                ctx.lineTo(width, height)
+                ctx.closePath()
+                ctx.fillStyle = fill
+                ctx.fill()
+                ctx.beginPath()
+                for (let i = 0; i < pts.length; i++)
+                    i === 0 ? ctx.moveTo(pts[i][0], pts[i][1]) : ctx.lineTo(pts[i][0], pts[i][1])
+                ctx.strokeStyle = Qt.alpha(tile.accent, 0.8)
+                ctx.lineWidth = 1.5
+                ctx.lineJoin = "round"
                 ctx.stroke()
             }
             Connections {
@@ -124,22 +380,343 @@ ApplicationWindow {
             }
         }
 
-        Column {
+        Item {
+            id: gauge
+            width: 100
+            height: 100
             anchors.left: parent.left
+            anchors.leftMargin: 12
             anchors.verticalCenter: parent.verticalCenter
-            anchors.leftMargin: 16
-            spacing: 2
-            Text { text: tile.label; color: root.muted; font.pixelSize: 11; font.letterSpacing: 1.5 }
-            Text {
-                text: tile.temp > 0 ? tile.temp.toFixed(0) + "°C" : "—"
-                color: tile.temp >= 85 ? "#FF5470" : root.fg
-                font.pixelSize: 30
-                font.bold: true
+            readonly property real stroke: 7
+            readonly property real r: width / 2 - stroke / 2 - 1
+            readonly property real start: 135     // 270° sweep, gap at the bottom
+            readonly property real span: 270
+
+            Rectangle {
+                // gauge face: keeps the sparkline out from behind the number
+                anchors.centerIn: parent
+                width: 2 * gauge.r + gauge.stroke + 4
+                height: width
+                radius: width / 2
+                color: root.panel
             }
-            Text {
-                text: tile.rpm + " rpm" + (tile.peak > 0 ? "  ·  peak " + tile.peak.toFixed(0) + "°" : "")
-                color: tile.peak >= 88 ? "#FF5470" : root.muted
+            Shape {
+                anchors.fill: parent
+                preferredRendererType: Shape.CurveRenderer
+                ShapePath {
+                    strokeColor: root.track
+                    strokeWidth: gauge.stroke
+                    fillColor: "transparent"
+                    capStyle: ShapePath.RoundCap
+                    PathAngleArc {
+                        centerX: gauge.width / 2; centerY: gauge.height / 2
+                        radiusX: gauge.r; radiusY: gauge.r
+                        startAngle: gauge.start; sweepAngle: gauge.span
+                    }
+                }
+            }
+            Shape {
+                id: arc
+                anchors.fill: parent
+                visible: false
+                preferredRendererType: Shape.CurveRenderer
+                ShapePath {
+                    strokeColor: tile.arcColor
+                    strokeWidth: gauge.stroke
+                    fillColor: "transparent"
+                    capStyle: ShapePath.RoundCap
+                    PathAngleArc {
+                        centerX: gauge.width / 2; centerY: gauge.height / 2
+                        radiusX: gauge.r; radiusY: gauge.r
+                        startAngle: gauge.start
+                        sweepAngle: Math.max(0.5, gauge.span * tile.frac(tile.shown))
+                    }
+                }
+            }
+            MultiEffect {
+                // the value arc plus its neon bloom
+                source: arc
+                anchors.fill: arc
+                visible: tile.temp > 0
+                shadowEnabled: true
+                shadowColor: tile.arcColor
+                shadowOpacity: 0.9
+                shadowBlur: 0.7
+                blurMax: 16
+            }
+            Item {
+                // session peak: a small tick across the ring
+                anchors.fill: parent
+                visible: tile.peak > 0
+                rotation: gauge.start + gauge.span * tile.frac(tile.peak)
+                Rectangle {
+                    width: gauge.stroke + 7
+                    height: 2.5
+                    radius: 1
+                    x: gauge.width / 2 + gauge.r - width / 2
+                    y: gauge.height / 2 - height / 2
+                    antialiasing: true
+                    color: tile.peak >= 88 ? root.hot : root.fg
+                }
+            }
+            Column {
+                anchors.centerIn: parent
+                anchors.verticalCenterOffset: 2
+                Label {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    text: tile.temp > 0 ? Math.round(tile.shown) : "—"
+                    color: tile.temp >= 85 ? root.hot : root.fg
+                    font.pixelSize: 28
+                    font.weight: Font.DemiBold
+                    font.features: { "tnum": 1 }
+                }
+                Label {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    text: "°C"
+                    visible: tile.temp > 0
+                    color: root.muted
+                    font.pixelSize: 10
+                    font.letterSpacing: 1
+                }
+            }
+        }
+
+        ColumnLayout {
+            anchors.left: gauge.right
+            anchors.leftMargin: 12
+            anchors.right: parent.right
+            anchors.rightMargin: 12
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: 4
+            RowLayout {
+                Layout.fillWidth: true
+                Label {
+                    Layout.fillWidth: true
+                    text: tile.label
+                    color: root.muted
+                    font.pixelSize: 11
+                    font.letterSpacing: 2
+                    font.bold: true
+                }
+                FanGlyph {
+                    rpm: tile.rpm
+                    animName: tile.label.toLowerCase() + "FanSpin"
+                    tint: tile.accent
+                }
+            }
+            Mono {
+                Layout.fillWidth: true
+                Layout.topMargin: 2
+                text: tile.rpm + " rpm"
+                color: root.fg
                 font.pixelSize: 11
+                elide: Text.ElideRight
+            }
+            Mono {
+                Layout.fillWidth: true
+                visible: tile.peak > 0
+                text: "peak " + tile.peak.toFixed(0) + "°"
+                color: tile.peak >= 88 ? root.hot : root.muted
+                font.pixelSize: 11
+                elide: Text.ElideRight
+            }
+        }
+    }
+
+    // Stylized 4-zone laptop keyboard (left, center-left, center-right,
+    // right) previewing a lighting effect. Purely visual; the timings follow
+    // cryo/hw/effects.py so the preview moves like the real keyboard.
+    component KbdPreview: Item {
+        id: kbd
+        property string effect: "static"
+        property color zoneColor: root.cyan
+        property real level: 100             // brightness 0-100
+        property real t: 0                   // effect clock, seconds
+        // per-zone colour, left to right
+        property color z0: "black"
+        property color z1: "black"
+        property color z2: "black"
+        property color z3: "black"
+        readonly property bool animated: ["quantum", "breathe", "spectrum", "rainbow", "wave", "backforth"]
+                                         .indexOf(effect) >= 0
+        // effects.RAINBOW
+        readonly property var rainbow: [[1, 0, 0], [1, 0.647, 0], [1, 1, 0], [0, 0.502, 0],
+                                        [0, 0.749, 1], [0, 0, 1], [0.502, 0, 0.502]]
+        implicitHeight: deck.height
+
+        function rgb(c) { return [c.r, c.g, c.b] }
+        function lerp(a, b, f) { return [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f, a[2] + (b[2] - a[2]) * f] }
+        function scaled(c, k) { return [c[0] * k, c[1] * k, c[2] * k] }
+        // ELC morph actions: each step fades linearly from the previous
+        // step's colour to its own over `dur` seconds, looping.
+        function morph(seq, dur) {
+            const n = seq.length
+            const pos = kbd.t / dur
+            const k = Math.floor(pos)
+            return kbd.lerp(seq[((k - 1) % n + n) % n], seq[k % n], pos - k)
+        }
+        function zone(i) {
+            const base = kbd.rgb(kbd.zoneColor), off = [0, 0, 0]
+            switch (kbd.effect) {
+            case "static":
+                return base
+            case "quantum":
+                return kbd.morph([kbd.rgb(root.cyan), kbd.rgb(root.violet)], 3)
+            case "breathe": {
+                // 0.5 s in, 2 s on, 0.5 s out, 2 s off
+                const p = kbd.t % 5
+                const f = p < 0.5 ? p / 0.5 : p < 2.5 ? 1 : p < 3 ? 1 - (p - 2.5) / 0.5 : 0
+                return kbd.scaled(base, f)
+            }
+            case "spectrum":
+                return kbd.morph(kbd.rainbow, 2)
+            case "rainbow": {
+                const seq = []
+                for (let j = 0; j < kbd.rainbow.length; j++)
+                    seq.push(kbd.rainbow[(i + j) % kbd.rainbow.length])
+                return kbd.morph(seq, 0.5)
+            }
+            case "wave":
+            case "backforth": {
+                // a lit zone stepping across (wave) or bouncing (backforth)
+                const order = kbd.effect === "wave" ? [0, 1, 2, 3] : [0, 1, 2, 3, 2, 1]
+                return kbd.morph(order.map(z => z === i ? base : off), 0.5)
+            }
+            default:
+                return off
+            }
+        }
+        function recompute() {
+            const c = [zone(0), zone(1), zone(2), zone(3)]
+            kbd.z0 = Qt.rgba(c[0][0], c[0][1], c[0][2], 1)
+            kbd.z1 = Qt.rgba(c[1][0], c[1][1], c[1][2], 1)
+            kbd.z2 = Qt.rgba(c[2][0], c[2][1], c[2][2], 1)
+            kbd.z3 = Qt.rgba(c[3][0], c[3][1], c[3][2], 1)
+        }
+        onEffectChanged: { kbd.t = 0; recompute() }
+        onZoneColorChanged: recompute()
+        onTChanged: recompute()
+        Component.onCompleted: recompute()
+
+        FrameAnimation {
+            objectName: "kbdAnim"
+            running: root.live && kbd.visible && kbd.animated && kbd.level > 0
+            onTriggered: kbd.t += Math.min(frameTime, 0.1)
+        }
+
+        // key rows in 1u widths, 15u per row
+        readonly property var rows: [
+            { h: 0.55, keys: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1] },
+            { h: 1, keys: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2] },
+            { h: 1, keys: [1.5, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1.5] },
+            { h: 1, keys: [1.75, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2.25] },
+            { h: 1, keys: [2.25, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2.75] },
+            { h: 1, keys: [1.25, 1, 1, 1.25, 5, 1.25, 1.25, 1, 1, 1] }
+        ]
+        readonly property real gap: 3
+        readonly property real rowH: 14
+        readonly property real lit: Math.max(0, Math.min(1, kbd.level / 100))
+
+        // Zone light spilling out around the deck: a blurred copy of the
+        // zone gradient, rendered through a 64x24 texture so re-blurring it
+        // every frame while an effect animates stays negligible.
+        Rectangle {
+            id: spillSrc
+            anchors.fill: deck
+            radius: deck.radius
+            visible: false
+            layer.enabled: true
+            layer.textureSize: Qt.size(64, 24)
+            layer.smooth: true
+            gradient: zoneGradient
+        }
+        MultiEffect {
+            source: spillSrc
+            anchors.fill: spillSrc
+            blurEnabled: true
+            blur: 1.0
+            blurMax: 32
+            opacity: 0.8 * kbd.lit
+            visible: kbd.lit > 0
+        }
+        Gradient {
+            id: zoneGradient
+            orientation: Gradient.Horizontal
+            GradientStop { position: 0.00; color: kbd.z0 }
+            GradientStop { position: 0.19; color: kbd.z0 }
+            GradientStop { position: 0.31; color: kbd.z1 }
+            GradientStop { position: 0.44; color: kbd.z1 }
+            GradientStop { position: 0.56; color: kbd.z2 }
+            GradientStop { position: 0.69; color: kbd.z2 }
+            GradientStop { position: 0.81; color: kbd.z3 }
+            GradientStop { position: 1.00; color: kbd.z3 }
+        }
+
+        Rectangle {
+            id: deck
+            width: parent.width
+            height: keyArea.height + 22 + palm.height
+            radius: 12
+            color: root.deck
+            border.color: root.panelBorder
+            border.width: 1
+
+            Item {
+                id: keyArea
+                x: 11
+                y: 11
+                width: parent.width - 22
+                height: kbd.rowH * 5.55 + kbd.gap * 5
+
+                // backlight: four zones blended at their seams
+                Rectangle {
+                    anchors.fill: parent
+                    anchors.margins: -1
+                    radius: 4
+                    opacity: kbd.lit
+                    gradient: zoneGradient
+                }
+                Column {
+                    spacing: kbd.gap
+                    Repeater {
+                        model: kbd.rows
+                        delegate: Row {
+                            id: keyRow
+                            required property var modelData
+                            readonly property real unit: (keyArea.width - kbd.gap * (modelData.keys.length - 1)) / 15
+                            spacing: kbd.gap
+                            Repeater {
+                                model: keyRow.modelData.keys
+                                delegate: Rectangle {
+                                    required property real modelData
+                                    width: modelData * keyRow.unit
+                                    height: kbd.rowH * keyRow.modelData.h
+                                    radius: 2.5
+                                    // translucent caps: the zone light glows
+                                    // through them and blazes in the gaps
+                                    gradient: Gradient {
+                                        GradientStop { position: 0.0; color: Qt.alpha(root.keycap, 0.55) }
+                                        GradientStop { position: 1.0; color: Qt.alpha(root.keycap, 0.86) }
+                                    }
+                                    border.color: Qt.alpha(root.fg, 0.05)
+                                    border.width: 1
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            Rectangle {
+                id: palm
+                anchors.horizontalCenter: parent.horizontalCenter
+                anchors.bottom: parent.bottom
+                anchors.bottomMargin: 6
+                width: parent.width * 0.3
+                height: 20
+                radius: 4
+                color: "transparent"
+                border.color: root.panelBorder
+                border.width: 1
             }
         }
     }
@@ -154,7 +731,7 @@ ApplicationWindow {
             width: control.availableWidth
             height: 5
             radius: 3
-            color: "#141A26"
+            color: root.track
             Rectangle {
                 width: control.visualPosition * parent.width
                 height: parent.height
@@ -182,7 +759,7 @@ ApplicationWindow {
             implicitWidth: 40; implicitHeight: 22; radius: 11
             x: sw.leftPadding
             y: parent.height / 2 - height / 2
-            color: sw.checked ? Qt.alpha(root.cyan, 0.35) : "#141A26"
+            color: sw.checked ? Qt.alpha(root.cyan, 0.35) : root.track
             border.color: sw.checked ? root.cyan : root.panelBorder
             Rectangle {
                 x: sw.checked ? parent.width - width - 3 : 3
@@ -198,6 +775,7 @@ ApplicationWindow {
         id: spin
         editable: true
         font.pixelSize: 12
+        font.features: { "tnum": 1 }
         implicitWidth: 92
         implicitHeight: 28
         contentItem: TextInput {
@@ -212,19 +790,19 @@ ApplicationWindow {
             selectByMouse: true
         }
         background: Rectangle {
-            color: "#141A26"
+            color: root.track
             border.color: spin.activeFocus ? root.cyan : root.panelBorder
             radius: 6
         }
         up.indicator: Rectangle {
             x: spin.width - width; height: spin.height; width: 22
             color: "transparent"
-            Text { anchors.centerIn: parent; text: "+"; color: root.muted; font.pixelSize: 14 }
+            Label { anchors.centerIn: parent; text: "+"; color: root.muted; font.pixelSize: 14 }
         }
         down.indicator: Rectangle {
             x: 0; height: spin.height; width: 22
             color: "transparent"
-            Text { anchors.centerIn: parent; text: "−"; color: root.muted; font.pixelSize: 14 }
+            Label { anchors.centerIn: parent; text: "−"; color: root.muted; font.pixelSize: 14 }
         }
     }
 
@@ -236,10 +814,10 @@ ApplicationWindow {
         implicitHeight: 28
         implicitWidth: btnText.implicitWidth + 24
         radius: 6
-        color: accent ? Qt.alpha(root.cyan, 0.15) : "#141A26"
+        color: accent ? Qt.alpha(root.cyan, 0.15) : root.track
         border.color: accent ? root.cyan : root.panelBorder
         opacity: enabled ? 1.0 : 0.4
-        Text {
+        Label {
             id: btnText
             anchors.centerIn: parent
             text: btn.label
@@ -276,9 +854,9 @@ ApplicationWindow {
 
         RowLayout {
             Layout.fillWidth: true
-            Text { text: editor.group.toUpperCase() + " curve"; color: root.fg; font.pixelSize: 12; font.bold: true }
+            Label { text: editor.group.toUpperCase() + " curve"; color: root.fg; font.pixelSize: 12; font.bold: true }
             Item { Layout.fillWidth: true }
-            Text { text: "°C → boost %"; color: root.muted; font.pixelSize: 11 }
+            Label { text: "°C → boost %"; color: root.muted; font.pixelSize: 11 }
         }
 
         // The curve as a chart: temperature 30-110 °C across, boost 0-100 %
@@ -297,8 +875,8 @@ ApplicationWindow {
                 const ctx = getContext("2d")
                 ctx.reset()
                 // grid
-                ctx.strokeStyle = "#141A26"; ctx.lineWidth = 1
-                ctx.fillStyle = root.muted; ctx.font = "9px sans-serif"
+                ctx.strokeStyle = root.track; ctx.lineWidth = 1
+                ctx.fillStyle = root.muted; ctx.font = "9px \"" + root.monoFont + "\""
                 for (const b of [0, 50, 100]) {
                     ctx.beginPath(); ctx.moveTo(px(tLo), py(b)); ctx.lineTo(px(tHi), py(b)); ctx.stroke()
                     ctx.fillText(b + "%", 2, py(b) + 3)
@@ -333,21 +911,25 @@ ApplicationWindow {
                 // this line in every mode, whatever the curve says.
                 const trip = editor.group === "gpu" ? daemon.guardGpuTrip : daemon.guardCpuTrip
                 if (trip > tLo && trip < tHi) {
-                    ctx.strokeStyle = "#FFB300"; ctx.lineWidth = 1
+                    ctx.strokeStyle = root.warn; ctx.lineWidth = 1
                     ctx.setLineDash([2, 4])
                     ctx.beginPath(); ctx.moveTo(px(trip), py(0)); ctx.lineTo(px(trip), py(100)); ctx.stroke()
                     ctx.setLineDash([])
-                    ctx.fillStyle = "#FFB300"
+                    ctx.fillStyle = root.warn
                     ctx.fillText("guard " + trip + "°", px(trip) - 44, py(100) + 9)
                 }
                 // live temperature marker
                 if (liveTemp > 0) {
-                    ctx.strokeStyle = "#FF5470"; ctx.lineWidth = 1
+                    ctx.strokeStyle = root.hot; ctx.lineWidth = 1
                     ctx.setLineDash([3, 3])
                     ctx.beginPath(); ctx.moveTo(px(liveTemp), py(0)); ctx.lineTo(px(liveTemp), py(100)); ctx.stroke()
                     ctx.setLineDash([])
-                    ctx.fillStyle = "#FF5470"
-                    ctx.fillText(liveTemp.toFixed(0) + "°", px(liveTemp) + 3, py(100) + 9)
+                    ctx.fillStyle = root.hot
+                    // The guard label sits just left of its line; drop the
+                    // live label a row when it would land on top of it.
+                    const dx = px(trip) - px(liveTemp)
+                    const clash = trip > tLo && trip < tHi && dx >= 0 && dx < 72
+                    ctx.fillText(liveTemp.toFixed(0) + "°", px(liveTemp) + 3, py(100) + (clash ? 21 : 9))
                 }
             }
             Connections {
@@ -375,7 +957,7 @@ ApplicationWindow {
                     from: 0; to: 110; value: temp
                     onValueModified: { points.setProperty(index, "temp", value); editor.dirty = true }
                 }
-                Text { text: "→"; color: root.muted; font.pixelSize: 12 }
+                Label { text: "→"; color: root.muted; font.pixelSize: 12 }
                 CryoSpin {
                     from: 0; to: 100; value: boost
                     onValueModified: { points.setProperty(index, "boost", value); editor.dirty = true }
@@ -421,6 +1003,24 @@ ApplicationWindow {
 
     // ---------- helpers ----------
 
+    function mix(a, b, f) {
+        return Qt.rgba(a.r + (b.r - a.r) * f, a.g + (b.g - a.g) * f, a.b + (b.b - a.b) * f, 1)
+    }
+    // Gauge colour by temperature: cyan while cool, violet under load,
+    // amber as it warms, red from 85 °C (where the number turns red too).
+    function tempColor(t) {
+        const stops = [[45, root.cyan], [65, root.violet], [78, root.warn], [85, root.hot]]
+        if (t <= stops[0][0])
+            return stops[0][1]
+        for (let i = 1; i < stops.length; i++) {
+            if (t <= stops[i][0]) {
+                const a = stops[i - 1], b = stops[i]
+                return root.mix(a[1], b[1], (t - a[0]) / (b[0] - a[0]))
+            }
+        }
+        return root.hot
+    }
+
     function fanRpm(group) {
         let total = 0, n = 0
         for (const f of daemon.fans)
@@ -434,6 +1034,42 @@ ApplicationWindow {
     }
 
     // ---------- layout ----------
+
+    // Ambient backdrop: two faint neon washes at the top of the window.
+    // Static — tessellated once per resize.
+    Shape {
+        anchors.fill: parent
+        ShapePath {
+            strokeColor: "transparent"
+            fillGradient: RadialGradient {
+                centerX: root.width * 0.12; centerY: -40
+                centerRadius: root.width * 0.95
+                focalX: centerX; focalY: centerY
+                GradientStop { position: 0.0; color: Qt.alpha(root.violet, 0.16) }
+                GradientStop { position: 1.0; color: "transparent" }
+            }
+            startX: 0; startY: 0
+            PathLine { x: root.width; y: 0 }
+            PathLine { x: root.width; y: root.height }
+            PathLine { x: 0; y: root.height }
+            PathLine { x: 0; y: 0 }
+        }
+        ShapePath {
+            strokeColor: "transparent"
+            fillGradient: RadialGradient {
+                centerX: root.width * 0.95; centerY: root.height * 0.35
+                centerRadius: root.width * 0.8
+                focalX: centerX; focalY: centerY
+                GradientStop { position: 0.0; color: Qt.alpha(root.cyan, 0.06) }
+                GradientStop { position: 1.0; color: "transparent" }
+            }
+            startX: 0; startY: 0
+            PathLine { x: root.width; y: 0 }
+            PathLine { x: root.width; y: root.height }
+            PathLine { x: 0; y: root.height }
+            PathLine { x: 0; y: 0 }
+        }
+    }
 
     Flickable {
         objectName: "scroller"
@@ -452,73 +1088,86 @@ ApplicationWindow {
             RowLayout {
                 Layout.fillWidth: true
                 spacing: 12
-                Image {
-                    // Frost-crystal brand mark. PNG rather than the SVG:
-                    // Qt's SVG renderer ignores the mark's blur filters, so
-                    // the pre-rendered raster carries the neon glow.
-                    source: "../assets/cryo-256.png"
+                Item {
                     Layout.preferredWidth: 42
                     Layout.preferredHeight: 42
-                    fillMode: Image.PreserveAspectFit
-                    smooth: true
-                    mipmap: true
+                    Image {
+                        // Frost-crystal brand mark. PNG rather than the SVG:
+                        // Qt's SVG renderer ignores the mark's blur filters, so
+                        // the pre-rendered raster carries the neon glow.
+                        id: brandMark
+                        anchors.fill: parent
+                        source: "../assets/cryo-256.png"
+                        fillMode: Image.PreserveAspectFit
+                        smooth: true
+                        mipmap: true
+                        visible: false
+                    }
+                    MultiEffect {
+                        // static bloom — rendered once
+                        source: brandMark
+                        anchors.fill: brandMark
+                        shadowEnabled: true
+                        shadowColor: root.cyan
+                        shadowOpacity: 0.55
+                        shadowBlur: 0.8
+                        blurMax: 20
+                    }
                 }
-                Column {
+                ColumnLayout {
+                    Layout.fillWidth: true
                     spacing: 2
-                    Text {
+                    Label {
                         text: "CRYO"
                         font.pixelSize: 26
                         font.bold: true
                         font.letterSpacing: 6
                         color: root.fg
                     }
-                    Text {
+                    Label {
+                        Layout.fillWidth: true
                         text: daemon.modelName || "Alienware command center"
                         color: root.muted
                         font.pixelSize: 12
+                        elide: Text.ElideRight
                     }
                 }
-                Item { Layout.fillWidth: true }
-                Rectangle {
+                Badge {
                     visible: daemon.guard
-                    radius: 6
-                    color: Qt.alpha("#FF5470", 0.2)
-                    border.color: "#FF5470"
-                    width: guardText.width + 16
-                    height: 24
-                    Text {
-                        id: guardText
-                        anchors.centerIn: parent
-                        text: "GUARD"
-                        color: "#FF5470"
-                        font.pixelSize: 10
-                        font.bold: true
-                        font.letterSpacing: 2
-                    }
+                    text: "GUARD"
+                    tint: root.hot
+                    pulseName: "guardPulse"
                 }
-                Rectangle {
+                Badge {
                     visible: daemon.gaming
-                    radius: 6
-                    color: Qt.alpha(root.violet, 0.25)
-                    border.color: root.violetText
-                    width: gamingText.width + 16
-                    height: 24
-                    Text {
-                        id: gamingText
-                        anchors.centerIn: parent
-                        text: "GAMING"
-                        color: root.violetText
-                        font.pixelSize: 10
-                        font.bold: true
-                        font.letterSpacing: 2
-                    }
+                    text: "GAMING"
+                    tint: root.violet
+                    ink: root.violetText
+                    pulseName: "gamingPulse"
                 }
                 Rectangle {
+                    id: connDot
                     width: 10; height: 10; radius: 5
-                    color: daemon.connected ? "#3DDC97" : "#FF5470"
+                    color: daemon.connected ? root.ok : root.hot
                     ToolTip.visible: dotArea.containsMouse
                     ToolTip.text: daemon.connected ? "cryod connected" : "cryod unreachable"
                     MouseArea { id: dotArea; anchors.fill: parent; hoverEnabled: true }
+                    Rectangle {
+                        id: connDotSrc
+                        anchors.fill: parent
+                        radius: 5
+                        color: connDot.color
+                        visible: false
+                    }
+                    MultiEffect {
+                        z: -1
+                        source: connDotSrc
+                        anchors.fill: connDotSrc
+                        shadowEnabled: true
+                        shadowColor: connDot.color
+                        shadowBlur: 0.8
+                        blurMax: 12
+                    }
                 }
             }
 
@@ -530,15 +1179,15 @@ ApplicationWindow {
                 Layout.fillWidth: true
                 implicitHeight: errorText.implicitHeight + 16
                 radius: 8
-                color: Qt.alpha("#FF5470", 0.12)
-                border.color: "#FF5470"
+                color: Qt.alpha(root.hot, 0.12)
+                border.color: root.hot
                 border.width: 1
-                Text {
+                Label {
                     id: errorText
                     anchors.fill: parent
                     anchors.margins: 8
                     text: ""
-                    color: "#FF5470"
+                    color: root.hot
                     font.pixelSize: 11
                     wrapMode: Text.WordWrap
                     verticalAlignment: Text.AlignVCenter
@@ -560,11 +1209,10 @@ ApplicationWindow {
             // Power modes — rendered from the daemon's capability list, so
             // Legacy-profile or no-G-Mode machines see exactly what exists.
             SectionTitle { text: "POWER MODES"; visible: daemon.hasProfiles }
-            GridLayout {
+            // All modes on one row: compact, still glowing when active.
+            RowLayout {
                 Layout.fillWidth: true
-                columns: 3
-                rowSpacing: 10
-                columnSpacing: 10
+                spacing: 6
                 Repeater {
                     model: daemon.profiles
                     delegate: ModeButton {
@@ -573,6 +1221,7 @@ ApplicationWindow {
                         glyph: root.profileGlyphs[modelData] ?? "❖"
                         label: root.profileLabels[modelData]
                                ?? (modelData.charAt(0).toUpperCase() + modelData.slice(1))
+                        shortLabel: root.profileShortLabels[modelData] ?? label
                     }
                 }
             }
@@ -582,13 +1231,13 @@ ApplicationWindow {
                 Layout.fillWidth: true
                 visible: !daemon.hasThermals || !daemon.hasProfiles
                 implicitHeight: limitedText.height + 24
-                border.color: "#FFB300"
-                Text {
+                border.color: root.warn
+                Label {
                     id: limitedText
                     x: 14; y: 12
                     width: parent.width - 28
                     wrapMode: Text.WordWrap
-                    color: "#FFB300"
+                    color: root.warn
                     font.pixelSize: 11
                     text: "Limited mode — the alienware-wmi driver doesn't expose "
                           + (!daemon.hasThermals && !daemon.hasProfiles ? "fans, temperatures or power modes"
@@ -621,19 +1270,23 @@ ApplicationWindow {
             RowLayout {
                 Layout.fillWidth: true
                 spacing: 8
-                Text { text: "dGPU load"; color: root.muted; font.pixelSize: 11 }
+                Label { text: "dGPU load"; color: root.muted; font.pixelSize: 11 }
                 Rectangle {
                     Layout.fillWidth: true
                     height: 5; radius: 3
-                    color: "#141A26"
+                    color: root.track
                     Rectangle {
                         width: parent.width * daemon.gpuUtil / 100
                         height: parent.height; radius: 3
-                        color: root.violetText
-                        Behavior on width { NumberAnimation { duration: 300 } }
+                        gradient: Gradient {
+                            orientation: Gradient.Horizontal
+                            GradientStop { position: 0.0; color: root.violet }
+                            GradientStop { position: 1.0; color: root.violetText }
+                        }
+                        Behavior on width { enabled: root.live; NumberAnimation { duration: 300 } }
                     }
                 }
-                Text { text: daemon.gpuUtil + "%"; color: root.fg; font.pixelSize: 11 }
+                Mono { text: daemon.gpuUtil + "%"; color: root.fg; font.pixelSize: 11 }
             }
 
             // VRAM — sparkline scaled to the card's full capacity, so a
@@ -648,21 +1301,40 @@ ApplicationWindow {
                     id: vramSpark
                     anchors.fill: parent
                     anchors.margins: 1
-                    opacity: 0.35
                     onPaint: {
                         const ctx = getContext("2d")
                         ctx.reset()
                         const h = daemon.vramHistory
                         if (!h || h.length < 2 || daemon.vramTotal <= 0)
                             return
-                        ctx.strokeStyle = root.violetText
-                        ctx.lineWidth = 1.5
                         ctx.beginPath()
+                        ctx.roundedRect(0, 0, width, height, 11, 11)
+                        ctx.clip()
+                        const pts = []
+                        let top = height
                         for (let i = 0; i < h.length; i++) {
                             const x = i / (h.length - 1) * width
                             const y = height - Math.min(h[i] / daemon.vramTotal, 1) * height
-                            i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y)
+                            pts.push([x, y])
+                            top = Math.min(top, y)
                         }
+                        const fill = ctx.createLinearGradient(0, top, 0, height)
+                        fill.addColorStop(0, Qt.alpha(root.violetText, 0.14))
+                        fill.addColorStop(1, Qt.alpha(root.violetText, 0.0))
+                        ctx.beginPath()
+                        ctx.moveTo(0, height)
+                        for (const p of pts)
+                            ctx.lineTo(p[0], p[1])
+                        ctx.lineTo(width, height)
+                        ctx.closePath()
+                        ctx.fillStyle = fill
+                        ctx.fill()
+                        ctx.beginPath()
+                        for (let i = 0; i < pts.length; i++)
+                            i === 0 ? ctx.moveTo(pts[i][0], pts[i][1]) : ctx.lineTo(pts[i][0], pts[i][1])
+                        ctx.strokeStyle = Qt.alpha(root.violetText, 0.45)
+                        ctx.lineWidth = 1.5
+                        ctx.lineJoin = "round"
                         ctx.stroke()
                     }
                     Connections {
@@ -682,10 +1354,11 @@ ApplicationWindow {
                         Layout.fillWidth: true
                         Column {
                             spacing: 2
-                            Text { text: "VRAM"; color: root.muted; font.pixelSize: 11; font.letterSpacing: 1.5 }
-                            Text {
+                            Label { text: "VRAM"; color: root.muted; font.pixelSize: 11; font.letterSpacing: 1.5 }
+                            Label {
                                 text: (daemon.vramUsed / 1024).toFixed(1) + " GB"
-                                color: daemon.vramUsed / daemon.vramTotal >= 0.9 ? "#FF5470" : root.fg
+                                font.features: { "tnum": 1 }
+                                color: daemon.vramUsed / daemon.vramTotal >= 0.9 ? root.hot : root.fg
                                 font.pixelSize: 20
                                 font.bold: true
                             }
@@ -693,14 +1366,14 @@ ApplicationWindow {
                         Item { Layout.fillWidth: true }
                         Column {
                             spacing: 2
-                            Text {
+                            Mono {
                                 anchors.right: parent.right
                                 text: "peak " + (daemon.vramPeak / 1024).toFixed(1)
                                       + " · of " + (daemon.vramTotal / 1024).toFixed(1) + " GB"
                                 color: root.muted
                                 font.pixelSize: 11
                             }
-                            Text {
+                            Mono {
                                 anchors.right: parent.right
                                 visible: daemon.gpuPower > 0
                                 text: daemon.gpuPower.toFixed(0) + " W · "
@@ -717,14 +1390,14 @@ ApplicationWindow {
                             required property var modelData
                             Layout.fillWidth: true
                             spacing: 8
-                            Text {
+                            Label {
                                 text: modelData.name
                                 color: root.muted
                                 font.pixelSize: 10
                                 elide: Text.ElideMiddle
                                 Layout.fillWidth: true
                             }
-                            Text {
+                            Mono {
                                 text: (modelData.vram_mb / 1024).toFixed(1) + " GB"
                                 color: root.fg
                                 font.pixelSize: 10
@@ -747,12 +1420,12 @@ ApplicationWindow {
                     spacing: 4
                     RowLayout {
                         Layout.fillWidth: true
-                        Column {
+                        ColumnLayout {
+                            Layout.fillWidth: true
                             spacing: 2
-                            Text { text: "Automatic fan curves"; color: root.fg; font.pixelSize: 13 }
-                            Text { text: "Off = manual boost sliders"; color: root.muted; font.pixelSize: 11 }
+                            Label { Layout.fillWidth: true; wrapMode: Text.WordWrap; text: "Automatic fan curves"; color: root.fg; font.pixelSize: 13 }
+                            Label { Layout.fillWidth: true; wrapMode: Text.WordWrap; text: "Off = manual boost sliders"; color: root.muted; font.pixelSize: 11 }
                         }
-                        Item { Layout.fillWidth: true }
                         CryoSwitch {
                             id: curvesSwitch
                             enabled: daemon.hasBoost
@@ -767,7 +1440,7 @@ ApplicationWindow {
                     RowLayout {
                         Layout.fillWidth: true
                         spacing: 10
-                        Text {
+                        Label {
                             text: !daemon.hasBoost
                                   ? "Fan boost is not supported by this model's firmware — curves and manual boost are unavailable."
                                   : daemon.profile === "custom"
@@ -775,7 +1448,7 @@ ApplicationWindow {
                                      ? "Curves active — boosts follow temperature."
                                      : "Manual boost — drag the sliders.")
                                   : "Fans follow the firmware in this mode. Custom mode hands them to Cryo."
-                            color: daemon.hasBoost ? root.muted : "#FFB300"
+                            color: daemon.hasBoost ? root.muted : root.warn
                             font.pixelSize: 11
                             Layout.fillWidth: true
                             wrapMode: Text.WordWrap
@@ -791,7 +1464,7 @@ ApplicationWindow {
                         Layout.fillWidth: true
                         enabled: daemon.hasBoost && daemon.profile === "custom" && !curvesSwitch.checked
                         opacity: enabled ? 1.0 : 0.4
-                        Text { text: "CPU boost"; color: root.muted; font.pixelSize: 12; Layout.preferredWidth: 70 }
+                        Label { text: "CPU boost"; color: root.muted; font.pixelSize: 12; Layout.preferredWidth: 70 }
                         CryoSlider {
                             id: cpuBoost
                             value: root.fanBoost("cpu")
@@ -800,29 +1473,32 @@ ApplicationWindow {
                             Binding on value { when: !cpuBoost.pressed; value: root.fanBoost("cpu") }
                             onPressedChanged: if (!pressed) daemon.setBoost("cpu", Math.round(value))
                         }
-                        Text { text: Math.round(cpuBoost.value) + "%"; color: root.fg; font.pixelSize: 12; Layout.preferredWidth: 36 }
+                        Label { text: Math.round(cpuBoost.value) + "%"; color: root.fg; font.pixelSize: 12; font.features: { "tnum": 1 }; Layout.preferredWidth: 36 }
                     }
                     RowLayout {
                         Layout.fillWidth: true
                         enabled: daemon.hasBoost && daemon.profile === "custom" && !curvesSwitch.checked
                         opacity: enabled ? 1.0 : 0.4
-                        Text { text: "GPU boost"; color: root.muted; font.pixelSize: 12; Layout.preferredWidth: 70 }
+                        Label { text: "GPU boost"; color: root.muted; font.pixelSize: 12; Layout.preferredWidth: 70 }
                         CryoSlider {
                             id: gpuBoost
                             value: root.fanBoost("gpu")
                             Binding on value { when: !gpuBoost.pressed; value: root.fanBoost("gpu") }
                             onPressedChanged: if (!pressed) daemon.setBoost("gpu", Math.round(value))
                         }
-                        Text { text: Math.round(gpuBoost.value) + "%"; color: root.fg; font.pixelSize: 12; Layout.preferredWidth: 36 }
+                        Label { text: Math.round(gpuBoost.value) + "%"; color: root.fg; font.pixelSize: 12; font.features: { "tnum": 1 }; Layout.preferredWidth: 36 }
                     }
                     Rectangle { Layout.fillWidth: true; height: 1; color: root.panelBorder; Layout.topMargin: 6; visible: daemon.hasBoost }
                     RowLayout {
                         Layout.fillWidth: true
                         visible: daemon.hasBoost
-                        Column {
+                        ColumnLayout {
+                            Layout.fillWidth: true
                             spacing: 2
-                            Text { text: "Curves & Thermal Guard"; color: root.fg; font.pixelSize: 13 }
-                            Text {
+                            Label { Layout.fillWidth: true; wrapMode: Text.WordWrap; text: "Curves & Thermal Guard"; color: root.fg; font.pixelSize: 13 }
+                            Label {
+                                Layout.fillWidth: true
+                                wrapMode: Text.WordWrap
                                 text: curveBody.visible
                                       ? "Points are °C → boost %. Curves apply in Custom mode; the guard trips in any mode."
                                       : "Edit the curve points and the guard's trip temperatures."
@@ -830,7 +1506,6 @@ ApplicationWindow {
                                 font.pixelSize: 11
                             }
                         }
-                        Item { Layout.fillWidth: true }
                         CryoButton {
                             label: curveBody.visible ? "Done" : "Edit"
                             onClicked: curveBody.visible = !curveBody.visible
@@ -865,21 +1540,21 @@ ApplicationWindow {
                                 function onConfigChanged() { if (!tuning.dirty) tuning.load() }
                             }
                             Component.onCompleted: load()
-                            Text { text: "Tuning & Thermal Guard"; color: root.fg; font.pixelSize: 12; font.bold: true }
+                            Label { text: "Tuning & Thermal Guard"; color: root.fg; font.pixelSize: 12; font.bold: true }
                             GridLayout {
                                 columns: 4
                                 columnSpacing: 8
                                 rowSpacing: 6
                                 Layout.fillWidth: true
-                                Text { text: "Hysteresis °C"; color: root.muted; font.pixelSize: 11 }
+                                Label { text: "Hysteresis °C"; color: root.muted; font.pixelSize: 11 }
                                 CryoSpin { id: hystSpin; from: 0; to: 15; onValueModified: tuning.dirty = true }
-                                Text { text: "Min step %"; color: root.muted; font.pixelSize: 11 }
+                                Label { text: "Min step %"; color: root.muted; font.pixelSize: 11 }
                                 CryoSpin { id: stepSpin; from: 1; to: 25; onValueModified: tuning.dirty = true }
-                                Text { text: "CPU trip °C"; color: root.muted; font.pixelSize: 11 }
+                                Label { text: "CPU trip °C"; color: root.muted; font.pixelSize: 11 }
                                 CryoSpin { id: cpuTripSpin; from: 60; to: 105; onValueModified: tuning.dirty = true }
-                                Text { text: "GPU trip °C"; color: root.muted; font.pixelSize: 11 }
+                                Label { text: "GPU trip °C"; color: root.muted; font.pixelSize: 11 }
                                 CryoSpin { id: gpuTripSpin; from: 60; to: 105; onValueModified: tuning.dirty = true }
-                                Text { text: "Release °C"; color: root.muted; font.pixelSize: 11 }
+                                Label { text: "Release °C"; color: root.muted; font.pixelSize: 11 }
                                 CryoSpin { id: releaseSpin; from: 1; to: 30; onValueModified: tuning.dirty = true }
                             }
                             RowLayout {
@@ -916,12 +1591,12 @@ ApplicationWindow {
                     RowLayout {
                         Layout.fillWidth: true
                         visible: daemon.hasTurbo
-                        Column {
+                        ColumnLayout {
+                            Layout.fillWidth: true
                             spacing: 2
-                            Text { text: "Turbo Boost"; color: root.fg; font.pixelSize: 13 }
-                            Text { text: "Off pins every core at its base clock — quiet and cool, slower."; color: root.muted; font.pixelSize: 11 }
+                            Label { Layout.fillWidth: true; wrapMode: Text.WordWrap; text: "Turbo Boost"; color: root.fg; font.pixelSize: 13 }
+                            Label { Layout.fillWidth: true; wrapMode: Text.WordWrap; text: "Off pins every core at its base clock — quiet and cool, slower."; color: root.muted; font.pixelSize: 11 }
                         }
-                        Item { Layout.fillWidth: true }
                         CryoSwitch {
                             checked: daemon.turbo
                             Binding on checked { value: daemon.turbo }
@@ -932,10 +1607,13 @@ ApplicationWindow {
                     RowLayout {
                         Layout.fillWidth: true
                         visible: daemon.hasCpuCap
-                        Column {
+                        ColumnLayout {
+                            Layout.fillWidth: true
                             spacing: 2
-                            Text { text: "Performance cap per mode"; color: root.fg; font.pixelSize: 13 }
-                            Text {
+                            Label { Layout.fillWidth: true; wrapMode: Text.WordWrap; text: "Performance cap per mode"; color: root.fg; font.pixelSize: 13 }
+                            Label {
+                                Layout.fillWidth: true
+                                wrapMode: Text.WordWrap
                                 // Every configured mode at a glance, so you don't have
                                 // to switch modes to see what each one is capped at.
                                 property var caps: daemon.cpuCapProfiles
@@ -952,7 +1630,6 @@ ApplicationWindow {
                                 font.pixelSize: 11
                             }
                         }
-                        Item { Layout.fillWidth: true }
                         CryoSwitch {
                             id: capSwitch
                             checked: daemon.cpuCapEnabled
@@ -960,7 +1637,7 @@ ApplicationWindow {
                             onToggled: daemon.setCpuCapEnabled(checked)
                         }
                     }
-                    Text {
+                    Label {
                         // Machine-specific: the GHz figure comes from this
                         // CPU's cpufreq max, never from a fixed model.
                         visible: daemon.hasCpuCap
@@ -978,7 +1655,7 @@ ApplicationWindow {
                         visible: daemon.hasCpuCap
                         enabled: capSwitch.checked
                         opacity: enabled ? 1.0 : 0.4
-                        Text {
+                        Label {
                             text: daemon.hasProfiles ? (root.profileLabels[daemon.profile] || daemon.profile) : "Default"
                             color: root.muted
                             font.pixelSize: 12
@@ -992,7 +1669,8 @@ ApplicationWindow {
                             Binding on value { when: !capSlider.pressed; value: daemon.cpuCap }
                             onPressedChanged: if (!pressed) daemon.setCpuCap(Math.round(value))
                         }
-                        Text {
+                        Label {
+                            font.features: { "tnum": 1 }
                             text: Math.round(capSlider.value) + "%"
                                   + (daemon.cpuMaxMhz > 0
                                      ? "  ≈ " + (Math.round(capSlider.value) / 100 * daemon.cpuMaxMhz / 1000).toFixed(1) + " GHz"
@@ -1017,10 +1695,13 @@ ApplicationWindow {
                     spacing: 4
                     RowLayout {
                         Layout.fillWidth: true
-                        Column {
+                        ColumnLayout {
+                            Layout.fillWidth: true
                             spacing: 2
-                            Text { text: "Auto profiles"; color: root.fg; font.pixelSize: 13 }
-                            Text {
+                            Label { Layout.fillWidth: true; wrapMode: Text.WordWrap; text: "Auto profiles"; color: root.fg; font.pixelSize: 13 }
+                            Label {
+                                Layout.fillWidth: true
+                                wrapMode: Text.WordWrap
                                 // From the daemon's config, not a fixed string.
                                 property var rules: daemon.autoRules
                                 function label(name) { return name ? (root.profileLabels[name] || name) : "—" }
@@ -1031,7 +1712,6 @@ ApplicationWindow {
                                 font.pixelSize: 11
                             }
                         }
-                        Item { Layout.fillWidth: true }
                         CryoSwitch {
                             checked: daemon.autoEnabled
                             Binding on checked { value: daemon.autoEnabled }
@@ -1040,7 +1720,7 @@ ApplicationWindow {
                     }
                     RowLayout {
                         spacing: 6
-                        Text {
+                        Label {
                             text: (daemon.ac ? "⚡ On AC power" : "🔋 On battery")
                                   + (daemon.gaming ? "  ·  🎮 game detected" : "")
                             color: root.muted
@@ -1065,6 +1745,15 @@ ApplicationWindow {
                     // Seeded from daemon config; a swatch click takes over.
                     property string currentColor: daemon.lightColor
 
+                    KbdPreview {
+                        objectName: "kbdPreview"
+                        Layout.fillWidth: true
+                        Layout.bottomMargin: 4
+                        effect: daemon.lightEffect
+                        zoneColor: lightColumn.currentColor
+                        level: brightness.value
+                    }
+
                     Flow {
                         Layout.fillWidth: true
                         spacing: 8
@@ -1088,7 +1777,26 @@ ApplicationWindow {
                                 radius: 14
                                 color: active ? Qt.alpha(root.cyan, 0.10) : root.panel
                                 border.color: active ? root.cyan : root.panelBorder
-                                Text {
+                                Rectangle {
+                                    id: fxHaloSrc
+                                    anchors.fill: parent
+                                    radius: fxChip.radius
+                                    color: "transparent"
+                                    border.color: root.cyan
+                                    visible: false
+                                }
+                                MultiEffect {
+                                    // same neon halo as the active power mode
+                                    z: -1
+                                    visible: fxChip.active
+                                    source: fxHaloSrc
+                                    anchors.fill: fxHaloSrc
+                                    shadowEnabled: true
+                                    shadowColor: root.cyan
+                                    shadowBlur: 0.7
+                                    blurMax: 12
+                                }
+                                Label {
                                     id: fxText
                                     anchors.centerIn: parent
                                     text: fxChip.modelData.label
@@ -1106,7 +1814,7 @@ ApplicationWindow {
 
                     RowLayout {
                         spacing: 8
-                        Text { text: "Color"; color: root.muted; font.pixelSize: 11 }
+                        Label { text: "Color"; color: root.muted; font.pixelSize: 11 }
                         Repeater {
                             model: ["#00D1FF", "#7B2DFF", "#FF2D55", "#3DDC97", "#FFB300", "#F3F5F9"]
                             delegate: Rectangle {
@@ -1126,19 +1834,19 @@ ApplicationWindow {
 
                     RowLayout {
                         Layout.fillWidth: true
-                        Text { text: "Brightness"; color: root.muted; font.pixelSize: 12; Layout.preferredWidth: 70 }
+                        Label { text: "Brightness"; color: root.muted; font.pixelSize: 12; Layout.preferredWidth: 70 }
                         CryoSlider {
                             id: brightness
                             value: daemon.lightBrightness
                             Binding on value { when: !brightness.pressed; value: daemon.lightBrightness }
                             onPressedChanged: if (!pressed) daemon.setBrightness(Math.round(value))
                         }
-                        Text { text: Math.round(brightness.value) + "%"; color: root.fg; font.pixelSize: 12; Layout.preferredWidth: 36 }
+                        Label { text: Math.round(brightness.value) + "%"; color: root.fg; font.pixelSize: 12; font.features: { "tnum": 1 }; Layout.preferredWidth: 36 }
                     }
                 }
             }
 
-            Text {
+            Label {
                 Layout.fillWidth: true
                 text: daemon.connected
                       ? "cryod · " + daemon.profile + " profile"

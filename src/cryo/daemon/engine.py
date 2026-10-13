@@ -11,6 +11,7 @@ import logging
 import time
 from typing import Callable
 
+from cryo import __version__
 from cryo.daemon import state as state_mod
 from cryo.daemon.gamesense import GameDetector, GpuSense
 from cryo.hw.effects import Effects
@@ -56,7 +57,7 @@ class Engine:
         self._guard_active = False
         self._guard_engaged_at = 0.0
         self._guard_saved_boosts: dict[str, int] = {}
-        self._peaks: dict[str, float] = {"cpu": 0.0, "gpu": 0.0}
+        self._peaks: dict[str, float] = {"cpu": 0.0, "gpu": 0.0, "vram": 0}
 
         # Static hardware capabilities, resolved once and shipped with
         # every telemetry frame so clients can render what exists.
@@ -64,6 +65,9 @@ class Engine:
             **self.thermal.capabilities(),
             "lighting": self.effects.available(),
             "game_detection": self.gpu.available(),
+            # Lets cryoctl status show which code the running daemon is on
+            # (the installer's update path restarts it).
+            "version": __version__,
         }
         log.info("Capabilities: %s", self.capabilities)
         drivable = (
@@ -171,13 +175,16 @@ class Engine:
         if lighting_ok:
             self.restore_lighting()
         result["lighting"] = lighting_ok
-        try:
-            profile = self.thermal.profile()
-            self.thermal.set_profile(profile)
-            result["profile"] = profile
-        except (OSError, ValueError) as exc:
-            log.warning("profile re-apply failed: %s", exc)
-            result["profile"] = None
+        # None = no platform profiles here (limited mode) or unreadable:
+        # nothing to re-assert, and the steps below must still run.
+        profile = self.thermal.profile()
+        if profile is not None:
+            try:
+                self.thermal.set_profile(profile)
+            except (OSError, ValueError) as exc:
+                log.warning("profile re-apply failed: %s", exc)
+                profile = None
+        result["profile"] = profile
         result["nvml"] = self.gpu.reinit()
         result["cpu_cap"] = self.apply_cpu_cap()
         self.capabilities["game_detection"] = self.gpu.available()
@@ -214,6 +221,21 @@ class Engine:
         except OSError as exc:
             log.warning("CPU cap write failed: %s", exc)
         return target
+
+    def release_cpu_cap(self) -> None:
+        """Lift the cap (max_perf_pct 100) when the feature is switched off.
+
+        `enabled: false` means "leave the knob alone" from then on, but the
+        cap Cryo last wrote would otherwise stay in force until reboot.
+        """
+        if not self.capabilities.get("cpu_cap"):
+            return
+        try:
+            if self.thermal.cpu_cap() != 100:
+                self.thermal.set_cpu_cap(100)
+                log.info("CPU cap lifted (feature switched off)")
+        except OSError as exc:
+            log.warning("CPU cap release failed: %s", exc)
 
     # -- profile helpers ---------------------------------------------------
 
@@ -255,6 +277,18 @@ class Engine:
             target = boost_profile
         self.set_profile(target)
         return target
+
+    def _track_peaks(self, telemetry: dict) -> None:
+        """Session peaks for both temps and dGPU VRAM, kept daemon-side so
+        every client (status, watch, GUI) sees the same high-water mark."""
+        for group, key in (
+            ("cpu", "cpu_temp"), ("gpu", "gpu_temp"), ("vram", "vram_used_mb"),
+        ):
+            if telemetry.get(key) is not None:
+                self._peaks[group] = max(self._peaks[group], telemetry[key])
+        telemetry["cpu_peak"] = self._peaks["cpu"]
+        telemetry["gpu_peak"] = self._peaks["gpu"]
+        telemetry["vram_peak_mb"] = self._peaks["vram"] or None
 
     # -- tick --------------------------------------------------------------
 
@@ -304,20 +338,18 @@ class Engine:
 
         # AC/battery transitions
         ac = telemetry["ac"]
-        if auto["enabled"] and ac != self._last_ac:
+        ac_changed = ac != self._last_ac
+        # Record the transition before acting on it: a failed profile write
+        # must not re-raise on every tick and starve the guard below.
+        self._last_ac = ac
+        if auto["enabled"] and ac_changed:
             target = self.resolve_profile(auto["on_ac"] if ac else auto["on_battery"])
             if target:
                 log.info("Power source changed (ac=%s) -> %s", ac, target)
                 self.set_profile(target)
                 telemetry["profile"] = target
-        self._last_ac = ac
 
-        # Peak tracking
-        for group, key in (("cpu", "cpu_temp"), ("gpu", "gpu_temp")):
-            if telemetry[key] is not None:
-                self._peaks[group] = max(self._peaks[group], telemetry[key])
-        telemetry["cpu_peak"] = self._peaks["cpu"]
-        telemetry["gpu_peak"] = self._peaks["gpu"]
+        self._track_peaks(telemetry)
 
         # Thermal guard runs in ANY profile and outranks curves.
         self._apply_guard(telemetry)

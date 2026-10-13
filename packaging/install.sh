@@ -16,9 +16,17 @@ if [[ -z "${SUDO_USER:-}" || "$SUDO_USER" == "root" ]]; then
 fi
 REAL_USER="$SUDO_USER"
 
-echo ">> Syncing venv (as $REAL_USER)"
 REAL_HOME="$(getent passwd "$REAL_USER" | cut -d: -f6)"
-sudo -u "$REAL_USER" env PATH="$REAL_HOME/.local/bin:$PATH" \
+# sudo resets PATH, so look for uv where its installers put it.
+USER_PATH="$REAL_HOME/.local/bin:$REAL_HOME/.cargo/bin:$PATH"
+if ! sudo -u "$REAL_USER" env PATH="$USER_PATH" bash -c "command -v uv" >/dev/null; then
+    echo "uv not found for $REAL_USER (checked ~/.local/bin, ~/.cargo/bin and $PATH)." >&2
+    echo "Install it first: https://docs.astral.sh/uv/getting-started/installation/" >&2
+    exit 1
+fi
+
+echo ">> Syncing venv (as $REAL_USER)"
+sudo -u "$REAL_USER" env PATH="$USER_PATH" \
     bash -c "cd '$REPO_DIR' && uv sync"
 
 echo ">> Linking CLIs into $REAL_HOME/.local/bin"
@@ -69,3 +77,13 @@ EOF
 chown "$REAL_USER:" "$REAL_HOME/.local/share/applications/cryo.desktop"
 
 echo ">> Done. Daemon: systemctl status cryod | GUI: cryo-gui | CLI: cryoctl status"
+# The CLIs are symlinked into ~/.local/bin, which many distros only add to
+# PATH at login (and only once the directory exists).
+LOGIN_PATH="$(sudo -u "$REAL_USER" -i printenv PATH 2>/dev/null | tail -n 1 || true)"
+case ":$LOGIN_PATH:" in
+    *":$REAL_HOME/.local/bin:"*)
+        echo "   If this terminal says 'cryoctl: command not found', open a new one." ;;
+    *)
+        echo "   $REAL_HOME/.local/bin is not on your PATH: add it, or run" \
+             "$REAL_HOME/.local/bin/cryoctl status" ;;
+esac

@@ -42,6 +42,7 @@ def make_server(overrides=None):
         # 0.4.0 hooks apply_patch re-arms after a curve/guard/cap patch
         reset_curve_state=lambda: None,
         apply_cpu_cap=lambda profile=None: applied.append(profile),
+        release_cpu_cap=lambda: applied.append("released"),
         applied=(applied := []),
     )
     server = Server(engine, dict(overrides or {}))
@@ -110,3 +111,13 @@ def test_set_cpu_cap_defaults_to_current_profile_and_reapplies(monkeypatch):
     assert engine.applied == [None]
     server.dispatch({"op": "set_cpu_cap", "profile": "gmode", "pct": 95}, None)
     assert engine.config["cpu_cap"]["profiles"] == {"performance": 90, "gmode": 95}
+
+
+def test_cap_off_lifts_the_cap_before_reapplying(monkeypatch):
+    monkeypatch.setattr(config_mod, "save_overrides", lambda o, path=None: None)
+    server, engine, _ = make_server({"cpu_cap": {"profiles": {"performance": 90}}})
+    resp = server.dispatch({"op": "set_config", "patch": {"cpu_cap": {"enabled": False}}}, None)
+    assert resp["ok"]
+    assert engine.applied == ["released", None]
+    server.dispatch({"op": "set_config", "patch": {"cpu_cap": {"enabled": True}}}, None)
+    assert engine.applied == ["released", None, None]

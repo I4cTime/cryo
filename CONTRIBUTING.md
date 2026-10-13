@@ -9,8 +9,9 @@ G-Series machine and open a
 ## Dev environment
 
 - Python **3.12+** and [`uv`](https://docs.astral.sh/uv/).
-- An alienware-wmi machine to test on (the daemon refuses to start
-  without the driver's hwmon).
+- An alienware-wmi machine to test on (without the driver's hwmon or
+  platform profiles the daemon runs in limited mode, so fan and mode
+  code can't be exercised there).
 
 ```bash
 git clone https://github.com/I4cTime/cryo.git && cd cryo
