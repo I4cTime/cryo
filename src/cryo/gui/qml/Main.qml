@@ -901,7 +901,11 @@ ApplicationWindow {
                     ctx.beginPath(); ctx.moveTo(px(liveTemp), py(0)); ctx.lineTo(px(liveTemp), py(100)); ctx.stroke()
                     ctx.setLineDash([])
                     ctx.fillStyle = root.hot
-                    ctx.fillText(liveTemp.toFixed(0) + "°", px(liveTemp) + 3, py(100) + 9)
+                    // The guard label sits just left of its line; drop the
+                    // live label a row when it would land on top of it.
+                    const dx = px(trip) - px(liveTemp)
+                    const clash = trip > tLo && trip < tHi && dx >= 0 && dx < 72
+                    ctx.fillText(liveTemp.toFixed(0) + "°", px(liveTemp) + 3, py(100) + (clash ? 21 : 9))
                 }
             }
             Connections {
