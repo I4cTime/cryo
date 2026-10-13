@@ -1,6 +1,8 @@
 import QtQuick
 import QtQuick.Controls.Basic
 import QtQuick.Layouts
+import QtQuick.Shapes
+import QtQuick.Effects
 
 ApplicationWindow {
     id: root
@@ -27,6 +29,16 @@ ApplicationWindow {
     readonly property color hot: "#FF5470"
     readonly property color warn: "#FFB300"
     readonly property color ok: "#3DDC97"
+    readonly property color shadow: "#000000"
+    readonly property color deck: "#06080D"       // keyboard preview deck
+    readonly property color keycap: "#0B0F17"     // keyboard preview caps
+
+    // Every looping animation (fan glyphs, badge pulses, lighting preview)
+    // runs only while the window is actually on screen: closed to the tray
+    // or minimized, the GUI must cost nothing.
+    readonly property bool live: root.visible
+                                 && root.visibility !== Window.Minimized
+                                 && root.visibility !== Window.Hidden
 
     // ---- type ----
     readonly property string uiFont: outfitRegular.font.family
@@ -64,10 +76,32 @@ ApplicationWindow {
     }
 
     component Panel: Rectangle {
+        id: panelRect
         color: root.panel
         border.color: root.panelBorder
         border.width: 1
         radius: 12
+
+        // Soft drop shadow. Blurs a hidden, content-free copy of the panel
+        // shape, so it re-renders only when the panel resizes.
+        Rectangle {
+            id: panelShadowSrc
+            anchors.fill: parent
+            radius: panelRect.radius
+            color: root.shadow
+            visible: false
+        }
+        MultiEffect {
+            z: -1
+            source: panelShadowSrc
+            anchors.fill: panelShadowSrc
+            shadowEnabled: true
+            shadowColor: root.shadow
+            shadowOpacity: 0.9
+            shadowBlur: 1.0
+            blurMax: 24
+            shadowVerticalOffset: 6
+        }
     }
 
     component ModeButton: Rectangle {
@@ -83,6 +117,30 @@ ApplicationWindow {
         border.color: active ? root.cyan : root.panelBorder
         border.width: active ? 2 : 1
 
+        // Neon tube: a blurred copy of the active border, inside and out.
+        Rectangle {
+            id: modeHaloSrc
+            anchors.fill: parent
+            radius: mode.radius
+            color: "transparent"
+            border.color: root.cyan
+            border.width: 2
+            visible: false
+        }
+        MultiEffect {
+            z: -1
+            source: modeHaloSrc
+            anchors.fill: modeHaloSrc
+            opacity: mode.active ? 1 : 0
+            visible: opacity > 0
+            shadowEnabled: true
+            shadowColor: root.cyan
+            shadowOpacity: 1.0
+            shadowBlur: 0.9
+            blurMax: 20
+            Behavior on opacity { enabled: root.live; NumberAnimation { duration: 200 } }
+        }
+
         Column {
             anchors.centerIn: parent
             spacing: 4
@@ -96,6 +154,7 @@ ApplicationWindow {
                 anchors.horizontalCenter: parent.horizontalCenter
                 text: mode.label
                 font.pixelSize: 11
+                font.weight: mode.active ? Font.Medium : Font.Normal
                 color: mode.active ? root.fg : root.muted
             }
         }
@@ -108,6 +167,126 @@ ApplicationWindow {
         Behavior on color { ColorAnimation { duration: 150 } }
     }
 
+    // Small fan whose rotor turns in proportion to the real RPM (~0.12°/s
+    // per rpm reads as spinning without strobing) and stops dead at 0.
+    component FanGlyph: Item {
+        id: fanGlyph
+        property int rpm
+        property color tint: root.cyan
+        property string animName          // objectName of the spin driver (for tests)
+        implicitWidth: 20
+        implicitHeight: 20
+        readonly property color ink: rpm > 0 ? tint : root.muted
+
+        Item {
+            // 24-unit design grid scaled to the glyph size
+            width: 24
+            height: 24
+            anchors.centerIn: parent
+            scale: fanGlyph.width / 24
+
+            Shape {
+                anchors.fill: parent
+                preferredRendererType: Shape.CurveRenderer
+                ShapePath {
+                    strokeColor: Qt.alpha(fanGlyph.ink, 0.45)
+                    strokeWidth: 1.4
+                    fillColor: "transparent"
+                    PathAngleArc { centerX: 12; centerY: 12; radiusX: 11.2; radiusY: 11.2; startAngle: 0; sweepAngle: 360 }
+                }
+            }
+            Shape {
+                id: rotor
+                anchors.fill: parent
+                preferredRendererType: Shape.CurveRenderer
+                // one ShapePath per blade: the curve renderer drops repeated
+                // subpaths that start at the same point
+                ShapePath {
+                    strokeColor: "transparent"
+                    fillColor: fanGlyph.ink
+                    PathSvg { path: "M 10.4 9.23 C 8.75 6.37 10 2.61 13.36 2.3 C 15.75 2.73 18.3 4.49 19.09 6.46 C 16.82 6.25 13.87 7.36 13.09 8.99 Z" }
+                }
+                ShapePath {
+                    strokeColor: "transparent"
+                    fillColor: fanGlyph.ink
+                    PathSvg { path: "M 14.77 10.4 C 17.63 8.75 21.39 10 21.7 13.36 C 21.27 15.75 19.51 18.3 17.54 19.09 C 17.75 16.82 16.64 13.87 15.01 13.09 Z" }
+                }
+                ShapePath {
+                    strokeColor: "transparent"
+                    fillColor: fanGlyph.ink
+                    PathSvg { path: "M 13.6 14.77 C 15.25 17.63 14 21.39 10.64 21.7 C 8.25 21.27 5.7 19.51 4.91 17.54 C 7.18 17.75 10.13 16.64 10.91 15.01 Z" }
+                }
+                ShapePath {
+                    strokeColor: "transparent"
+                    fillColor: fanGlyph.ink
+                    PathSvg { path: "M 9.23 13.6 C 6.37 15.25 2.61 14 2.3 10.64 C 2.73 8.25 4.49 5.7 6.46 4.91 C 6.25 7.18 7.36 10.13 8.99 10.91 Z" }
+                }
+                ShapePath {
+                    strokeColor: fanGlyph.ink
+                    strokeWidth: 1.2
+                    fillColor: root.panel
+                    PathAngleArc { centerX: 12; centerY: 12; radiusX: 2.4; radiusY: 2.4; startAngle: 0; sweepAngle: 360 }
+                }
+            }
+        }
+        FrameAnimation {
+            objectName: fanGlyph.animName
+            running: root.live && fanGlyph.visible && fanGlyph.rpm > 0
+            onTriggered: rotor.rotation = (rotor.rotation + fanGlyph.rpm * 0.12 * Math.min(frameTime, 0.1)) % 360
+        }
+    }
+
+    // Header status pill with a pulsing neon halo.
+    component Badge: Rectangle {
+        id: badge
+        property string text
+        property color tint: root.hot
+        property color ink: tint
+        property string pulseName         // objectName of the pulse (for tests)
+        // Opaque fill so the halo shows only outside the pill.
+        color: Qt.tint(root.bg, Qt.alpha(tint, 0.22))
+        border.color: ink
+        radius: 6
+        implicitWidth: badgeText.implicitWidth + 16
+        implicitHeight: 24
+
+        Rectangle {
+            id: badgeHaloSrc
+            anchors.fill: parent
+            radius: badge.radius
+            color: badge.tint
+            visible: false
+        }
+        MultiEffect {
+            id: badgeHalo
+            z: -1
+            source: badgeHaloSrc
+            anchors.fill: badgeHaloSrc
+            shadowEnabled: true
+            shadowColor: badge.tint
+            shadowBlur: 1.0
+            blurMax: 20
+            opacity: 0.35
+            SequentialAnimation on opacity {
+                objectName: badge.pulseName
+                running: root.live && badge.visible
+                loops: Animation.Infinite
+                NumberAnimation { to: 1.0; duration: 900; easing.type: Easing.InOutSine }
+                NumberAnimation { to: 0.35; duration: 900; easing.type: Easing.InOutSine }
+            }
+        }
+        Label {
+            id: badgeText
+            anchors.centerIn: parent
+            text: badge.text
+            color: badge.ink
+            font.pixelSize: 10
+            font.bold: true
+            font.letterSpacing: 2
+        }
+    }
+
+    // Temperature ring gauge over a gradient sparkline of the session.
     component StatTile: Panel {
         id: tile
         property string label
@@ -116,29 +295,60 @@ ApplicationWindow {
         property int rpm
         property var history: []
         property color accent: root.cyan
+        // Eased copy of `temp`: the number and the arc glide to each reading.
+        property real shown: temp
+        Behavior on shown {
+            enabled: root.live
+            NumberAnimation { duration: 700; easing.type: Easing.OutCubic }
+        }
+        readonly property real lo: 30
+        readonly property real hi: 100
+        function frac(t) { return Math.min(Math.max((t - lo) / (hi - lo), 0), 1) }
+        readonly property color arcColor: root.tempColor(shown)
         Layout.fillWidth: true
-        Layout.preferredHeight: 110
+        Layout.preferredHeight: 128
 
         Canvas {
             id: spark
             anchors.fill: parent
             anchors.margins: 1
-            opacity: 0.35
             onPaint: {
                 const ctx = getContext("2d")
                 ctx.reset()
                 const h = tile.history
                 if (!h || h.length < 2)
                     return
-                ctx.strokeStyle = tile.accent
-                ctx.lineWidth = 1.5
+                // keep the fill inside the tile's rounded corners
                 ctx.beginPath()
-                const lo = 30, hi = 100
+                ctx.roundedRect(0, 0, width, height, tile.radius - 1, tile.radius - 1)
+                ctx.clip()
+                // 30-100 °C mapped onto the lower part of the tile, under the readouts
+                const band = height * 0.7
+                const pts = []
+                let top = height
                 for (let i = 0; i < h.length; i++) {
                     const x = i / (h.length - 1) * width
-                    const y = height - (Math.min(Math.max(h[i], lo), hi) - lo) / (hi - lo) * height
-                    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y)
+                    const y = height - tile.frac(h[i]) * band
+                    pts.push([x, y])
+                    top = Math.min(top, y)
                 }
+                const fill = ctx.createLinearGradient(0, top, 0, height)
+                fill.addColorStop(0, Qt.alpha(tile.accent, 0.22))
+                fill.addColorStop(1, Qt.alpha(tile.accent, 0.0))
+                ctx.beginPath()
+                ctx.moveTo(0, height)
+                for (const p of pts)
+                    ctx.lineTo(p[0], p[1])
+                ctx.lineTo(width, height)
+                ctx.closePath()
+                ctx.fillStyle = fill
+                ctx.fill()
+                ctx.beginPath()
+                for (let i = 0; i < pts.length; i++)
+                    i === 0 ? ctx.moveTo(pts[i][0], pts[i][1]) : ctx.lineTo(pts[i][0], pts[i][1])
+                ctx.strokeStyle = Qt.alpha(tile.accent, 0.8)
+                ctx.lineWidth = 1.5
+                ctx.lineJoin = "round"
                 ctx.stroke()
             }
             Connections {
@@ -147,22 +357,145 @@ ApplicationWindow {
             }
         }
 
-        Column {
+        Item {
+            id: gauge
+            width: 100
+            height: 100
             anchors.left: parent.left
+            anchors.leftMargin: 12
             anchors.verticalCenter: parent.verticalCenter
-            anchors.leftMargin: 16
-            spacing: 2
-            Label { text: tile.label; color: root.muted; font.pixelSize: 11; font.letterSpacing: 1.5 }
-            Label {
-                text: tile.temp > 0 ? tile.temp.toFixed(0) + "°C" : "—"
-                color: tile.temp >= 85 ? root.hot : root.fg
-                font.pixelSize: 30
-                font.bold: true
+            readonly property real stroke: 7
+            readonly property real r: width / 2 - stroke / 2 - 1
+            readonly property real start: 135     // 270° sweep, gap at the bottom
+            readonly property real span: 270
+
+            Rectangle {
+                // gauge face: keeps the sparkline out from behind the number
+                anchors.centerIn: parent
+                width: 2 * gauge.r + gauge.stroke + 4
+                height: width
+                radius: width / 2
+                color: root.panel
             }
-            Label {
-                text: tile.rpm + " rpm" + (tile.peak > 0 ? "  ·  peak " + tile.peak.toFixed(0) + "°" : "")
+            Shape {
+                anchors.fill: parent
+                preferredRendererType: Shape.CurveRenderer
+                ShapePath {
+                    strokeColor: root.track
+                    strokeWidth: gauge.stroke
+                    fillColor: "transparent"
+                    capStyle: ShapePath.RoundCap
+                    PathAngleArc {
+                        centerX: gauge.width / 2; centerY: gauge.height / 2
+                        radiusX: gauge.r; radiusY: gauge.r
+                        startAngle: gauge.start; sweepAngle: gauge.span
+                    }
+                }
+            }
+            Shape {
+                id: arc
+                anchors.fill: parent
+                visible: false
+                preferredRendererType: Shape.CurveRenderer
+                ShapePath {
+                    strokeColor: tile.arcColor
+                    strokeWidth: gauge.stroke
+                    fillColor: "transparent"
+                    capStyle: ShapePath.RoundCap
+                    PathAngleArc {
+                        centerX: gauge.width / 2; centerY: gauge.height / 2
+                        radiusX: gauge.r; radiusY: gauge.r
+                        startAngle: gauge.start
+                        sweepAngle: Math.max(0.5, gauge.span * tile.frac(tile.shown))
+                    }
+                }
+            }
+            MultiEffect {
+                // the value arc plus its neon bloom
+                source: arc
+                anchors.fill: arc
+                visible: tile.temp > 0
+                shadowEnabled: true
+                shadowColor: tile.arcColor
+                shadowOpacity: 0.9
+                shadowBlur: 0.7
+                blurMax: 16
+            }
+            Item {
+                // session peak: a small tick across the ring
+                anchors.fill: parent
+                visible: tile.peak > 0
+                rotation: gauge.start + gauge.span * tile.frac(tile.peak)
+                Rectangle {
+                    width: gauge.stroke + 7
+                    height: 2.5
+                    radius: 1
+                    x: gauge.width / 2 + gauge.r - width / 2
+                    y: gauge.height / 2 - height / 2
+                    antialiasing: true
+                    color: tile.peak >= 88 ? root.hot : root.fg
+                }
+            }
+            Column {
+                anchors.centerIn: parent
+                anchors.verticalCenterOffset: 2
+                Label {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    text: tile.temp > 0 ? Math.round(tile.shown) : "—"
+                    color: tile.temp >= 85 ? root.hot : root.fg
+                    font.pixelSize: 28
+                    font.weight: Font.DemiBold
+                    font.features: { "tnum": 1 }
+                }
+                Label {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    text: "°C"
+                    visible: tile.temp > 0
+                    color: root.muted
+                    font.pixelSize: 10
+                    font.letterSpacing: 1
+                }
+            }
+        }
+
+        ColumnLayout {
+            anchors.left: gauge.right
+            anchors.leftMargin: 12
+            anchors.right: parent.right
+            anchors.rightMargin: 12
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: 4
+            RowLayout {
+                Layout.fillWidth: true
+                Label {
+                    Layout.fillWidth: true
+                    text: tile.label
+                    color: root.muted
+                    font.pixelSize: 11
+                    font.letterSpacing: 2
+                    font.bold: true
+                }
+                FanGlyph {
+                    rpm: tile.rpm
+                    animName: tile.label.toLowerCase() + "FanSpin"
+                    tint: tile.accent
+                }
+            }
+            Mono {
+                Layout.fillWidth: true
+                Layout.topMargin: 2
+                text: tile.rpm + " rpm"
+                color: root.fg
+                font.pixelSize: 11
+                elide: Text.ElideRight
+            }
+            Mono {
+                Layout.fillWidth: true
+                visible: tile.peak > 0
+                text: "peak " + tile.peak.toFixed(0) + "°"
                 color: tile.peak >= 88 ? root.hot : root.muted
                 font.pixelSize: 11
+                elide: Text.ElideRight
             }
         }
     }
@@ -445,6 +778,24 @@ ApplicationWindow {
 
     // ---------- helpers ----------
 
+    function mix(a, b, f) {
+        return Qt.rgba(a.r + (b.r - a.r) * f, a.g + (b.g - a.g) * f, a.b + (b.b - a.b) * f, 1)
+    }
+    // Gauge colour by temperature: cyan while cool, violet under load,
+    // amber as it warms, red from 85 °C (where the number turns red too).
+    function tempColor(t) {
+        const stops = [[45, root.cyan], [65, root.violet], [78, root.warn], [85, root.hot]]
+        if (t <= stops[0][0])
+            return stops[0][1]
+        for (let i = 1; i < stops.length; i++) {
+            if (t <= stops[i][0]) {
+                const a = stops[i - 1], b = stops[i]
+                return root.mix(a[1], b[1], (t - a[0]) / (b[0] - a[0]))
+            }
+        }
+        return root.hot
+    }
+
     function fanRpm(group) {
         let total = 0, n = 0
         for (const f of daemon.fans)
@@ -458,6 +809,42 @@ ApplicationWindow {
     }
 
     // ---------- layout ----------
+
+    // Ambient backdrop: two faint neon washes at the top of the window.
+    // Static — tessellated once per resize.
+    Shape {
+        anchors.fill: parent
+        ShapePath {
+            strokeColor: "transparent"
+            fillGradient: RadialGradient {
+                centerX: root.width * 0.12; centerY: -40
+                centerRadius: root.width * 0.95
+                focalX: centerX; focalY: centerY
+                GradientStop { position: 0.0; color: Qt.alpha(root.violet, 0.16) }
+                GradientStop { position: 1.0; color: "transparent" }
+            }
+            startX: 0; startY: 0
+            PathLine { x: root.width; y: 0 }
+            PathLine { x: root.width; y: root.height }
+            PathLine { x: 0; y: root.height }
+            PathLine { x: 0; y: 0 }
+        }
+        ShapePath {
+            strokeColor: "transparent"
+            fillGradient: RadialGradient {
+                centerX: root.width * 0.95; centerY: root.height * 0.35
+                centerRadius: root.width * 0.8
+                focalX: centerX; focalY: centerY
+                GradientStop { position: 0.0; color: Qt.alpha(root.cyan, 0.06) }
+                GradientStop { position: 1.0; color: "transparent" }
+            }
+            startX: 0; startY: 0
+            PathLine { x: root.width; y: 0 }
+            PathLine { x: root.width; y: root.height }
+            PathLine { x: 0; y: root.height }
+            PathLine { x: 0; y: 0 }
+        }
+    }
 
     Flickable {
         objectName: "scroller"
@@ -476,16 +863,31 @@ ApplicationWindow {
             RowLayout {
                 Layout.fillWidth: true
                 spacing: 12
-                Image {
-                    // Frost-crystal brand mark. PNG rather than the SVG:
-                    // Qt's SVG renderer ignores the mark's blur filters, so
-                    // the pre-rendered raster carries the neon glow.
-                    source: "../assets/cryo-256.png"
+                Item {
                     Layout.preferredWidth: 42
                     Layout.preferredHeight: 42
-                    fillMode: Image.PreserveAspectFit
-                    smooth: true
-                    mipmap: true
+                    Image {
+                        // Frost-crystal brand mark. PNG rather than the SVG:
+                        // Qt's SVG renderer ignores the mark's blur filters, so
+                        // the pre-rendered raster carries the neon glow.
+                        id: brandMark
+                        anchors.fill: parent
+                        source: "../assets/cryo-256.png"
+                        fillMode: Image.PreserveAspectFit
+                        smooth: true
+                        mipmap: true
+                        visible: false
+                    }
+                    MultiEffect {
+                        // static bloom — rendered once
+                        source: brandMark
+                        anchors.fill: brandMark
+                        shadowEnabled: true
+                        shadowColor: root.cyan
+                        shadowOpacity: 0.55
+                        shadowBlur: 0.8
+                        blurMax: 20
+                    }
                 }
                 ColumnLayout {
                     Layout.fillWidth: true
@@ -505,46 +907,42 @@ ApplicationWindow {
                         elide: Text.ElideRight
                     }
                 }
-                Rectangle {
+                Badge {
                     visible: daemon.guard
-                    radius: 6
-                    color: Qt.alpha(root.hot, 0.2)
-                    border.color: root.hot
-                    width: guardText.width + 16
-                    height: 24
-                    Label {
-                        id: guardText
-                        anchors.centerIn: parent
-                        text: "GUARD"
-                        color: root.hot
-                        font.pixelSize: 10
-                        font.bold: true
-                        font.letterSpacing: 2
-                    }
+                    text: "GUARD"
+                    tint: root.hot
+                    pulseName: "guardPulse"
                 }
-                Rectangle {
+                Badge {
                     visible: daemon.gaming
-                    radius: 6
-                    color: Qt.alpha(root.violet, 0.25)
-                    border.color: root.violetText
-                    width: gamingText.width + 16
-                    height: 24
-                    Label {
-                        id: gamingText
-                        anchors.centerIn: parent
-                        text: "GAMING"
-                        color: root.violetText
-                        font.pixelSize: 10
-                        font.bold: true
-                        font.letterSpacing: 2
-                    }
+                    text: "GAMING"
+                    tint: root.violet
+                    ink: root.violetText
+                    pulseName: "gamingPulse"
                 }
                 Rectangle {
+                    id: connDot
                     width: 10; height: 10; radius: 5
                     color: daemon.connected ? root.ok : root.hot
                     ToolTip.visible: dotArea.containsMouse
                     ToolTip.text: daemon.connected ? "cryod connected" : "cryod unreachable"
                     MouseArea { id: dotArea; anchors.fill: parent; hoverEnabled: true }
+                    Rectangle {
+                        id: connDotSrc
+                        anchors.fill: parent
+                        radius: 5
+                        color: connDot.color
+                        visible: false
+                    }
+                    MultiEffect {
+                        z: -1
+                        source: connDotSrc
+                        anchors.fill: connDotSrc
+                        shadowEnabled: true
+                        shadowColor: connDot.color
+                        shadowBlur: 0.8
+                        blurMax: 12
+                    }
                 }
             }
 
@@ -655,8 +1053,12 @@ ApplicationWindow {
                     Rectangle {
                         width: parent.width * daemon.gpuUtil / 100
                         height: parent.height; radius: 3
-                        color: root.violetText
-                        Behavior on width { NumberAnimation { duration: 300 } }
+                        gradient: Gradient {
+                            orientation: Gradient.Horizontal
+                            GradientStop { position: 0.0; color: root.violet }
+                            GradientStop { position: 1.0; color: root.violetText }
+                        }
+                        Behavior on width { enabled: root.live; NumberAnimation { duration: 300 } }
                     }
                 }
                 Mono { text: daemon.gpuUtil + "%"; color: root.fg; font.pixelSize: 11 }
@@ -674,21 +1076,40 @@ ApplicationWindow {
                     id: vramSpark
                     anchors.fill: parent
                     anchors.margins: 1
-                    opacity: 0.35
                     onPaint: {
                         const ctx = getContext("2d")
                         ctx.reset()
                         const h = daemon.vramHistory
                         if (!h || h.length < 2 || daemon.vramTotal <= 0)
                             return
-                        ctx.strokeStyle = root.violetText
-                        ctx.lineWidth = 1.5
                         ctx.beginPath()
+                        ctx.roundedRect(0, 0, width, height, 11, 11)
+                        ctx.clip()
+                        const pts = []
+                        let top = height
                         for (let i = 0; i < h.length; i++) {
                             const x = i / (h.length - 1) * width
                             const y = height - Math.min(h[i] / daemon.vramTotal, 1) * height
-                            i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y)
+                            pts.push([x, y])
+                            top = Math.min(top, y)
                         }
+                        const fill = ctx.createLinearGradient(0, top, 0, height)
+                        fill.addColorStop(0, Qt.alpha(root.violetText, 0.14))
+                        fill.addColorStop(1, Qt.alpha(root.violetText, 0.0))
+                        ctx.beginPath()
+                        ctx.moveTo(0, height)
+                        for (const p of pts)
+                            ctx.lineTo(p[0], p[1])
+                        ctx.lineTo(width, height)
+                        ctx.closePath()
+                        ctx.fillStyle = fill
+                        ctx.fill()
+                        ctx.beginPath()
+                        for (let i = 0; i < pts.length; i++)
+                            i === 0 ? ctx.moveTo(pts[i][0], pts[i][1]) : ctx.lineTo(pts[i][0], pts[i][1])
+                        ctx.strokeStyle = Qt.alpha(root.violetText, 0.45)
+                        ctx.lineWidth = 1.5
+                        ctx.lineJoin = "round"
                         ctx.stroke()
                     }
                     Connections {
