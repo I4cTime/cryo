@@ -78,10 +78,14 @@ def test_set_color_sequence_reset_status_blocks_loop_update():
     k = kb.Keyboard(transport_factory=lambda: t)
     k.set_color(0x00D1FF)
     ops = [p[1:4] for p in t.sent]
+    # leave any built-in effect (reset, status, effect-off, update), then
+    # reset, status, 10 colour packets, loop, update
     assert ops[0] == b"\x94\x00\x00" and ops[1] == b"\x93\x00\x00"
-    assert ops[2:12] == [b"\x8c\x02\x00"] * 10
-    assert ops[12] == b"\x8c\x13\x00" and ops[13] == b"\x8b\x01\xff"
-    assert len(t.sent) == 14
+    assert ops[2] == b"\x80\x01\xfe" and ops[3] == b"\x8b\x01\xff"
+    assert ops[4] == b"\x94\x00\x00" and ops[5] == b"\x93\x00\x00"
+    assert ops[6:16] == [b"\x8c\x02\x00"] * 10
+    assert ops[16] == b"\x8c\x13\x00" and ops[17] == b"\x8b\x01\xff"
+    assert len(t.sent) == 18
 
 
 def test_brightness_sequence():
@@ -95,10 +99,10 @@ def test_brightness_sequence():
 def test_apply_sets_brightness_then_colour():
     t = FakeTransport()
     k = kb.Keyboard(transport_factory=lambda: t)
-    k.apply("quantum", 0xFF0000, 40)
+    k.apply("static", 0x00D1FF, 40)
     assert t.sent[2][1] == 0x83  # brightness first
     assert t.sent[-1][1:4] == b"\x8b\x01\xff"  # colour update last
-    assert t.sent[5][5:8] == b"\x00\xd1\xff"  # quantum cyan on the keys
+    assert t.sent[9][5:8] == b"\x00\xd1\xff"  # first colour block
 
 
 def test_write_error_reopens_once():
@@ -107,8 +111,8 @@ def test_write_error_reopens_once():
     handles = iter([first, second])
     k = kb.Keyboard(transport_factory=lambda: next(handles))
     k.off()
-    assert first.closed and len(second.sent) == 14
-    assert all(b == 0 for b in second.sent[2][5:8])
+    assert first.closed and len(second.sent) == 18
+    assert all(b == 0 for b in second.sent[6][5:8])
 
 
 def test_feature_report_size_from_descriptor():
@@ -136,3 +140,36 @@ def test_find_keyboard_matches_darfon_with_cc_report(tmp_path):
 
 def test_find_keyboard_none_when_absent(tmp_path):
     assert kb.find_keyboard(tmp_path) is None
+
+
+def test_effect_packet_layout():
+    p = kb.effect_packet(kb.EFFECT_PULSE2, [0x00D1FF, 0x7B2DFF])
+    assert p[:16] == bytes([0xCC, 0x80, 0x09, 0x07, 0, 0, 1, 1, 1, 1, 0x00, 0xD1, 0xFF, 0x7B, 0x2D, 0xFF])
+    one = kb.effect_packet(kb.EFFECT_BREATHE, [0xFF0000])
+    assert one[2] == 0x02 and one[9] == 0 and one[10:13] == b"\xff\x00\x00" and not any(one[13:])
+
+
+def test_keyboard_plan_maps_chassis_effects():
+    assert kb.keyboard_plan("static", 0xFF0000) == (None, [0xFF0000])
+    assert kb.keyboard_plan("off", 0xFF0000) == (None, [0])
+    assert kb.keyboard_plan("quantum", 0) == (kb.EFFECT_PULSE2, [0x00D1FF, 0x7B2DFF])
+    assert kb.keyboard_plan("breathe", 0x3DDC97) == (kb.EFFECT_BREATHE, [0x3DDC97])
+    assert kb.keyboard_plan("wave", 0x3DDC97)[0] == kb.EFFECT_WAVE
+    assert kb.keyboard_plan("backforth", 0x3DDC97)[0] == kb.EFFECT_RIDER
+
+
+def test_apply_animated_effect_sends_effect_then_update():
+    t = FakeTransport()
+    k = kb.Keyboard(transport_factory=lambda: t)
+    k.apply("quantum", 0, None)
+    assert [p[1] for p in t.sent] == [0x94, 0x93, 0x80, 0x8B]
+
+
+def test_set_color_leaves_builtin_effect_first():
+    t = FakeTransport()
+    k = kb.Keyboard(transport_factory=lambda: t)
+    k.set_color(0x112233)
+    ops = [p[1] for p in t.sent]
+    assert ops[:6] == [0x94, 0x93, 0x80, 0x8B, 0x94, 0x93]
+    assert t.sent[2][2:4] == b"\x01\xfe"
+    assert ops[-2:] == [0x8C, 0x8B]
