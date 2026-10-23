@@ -1,4 +1,11 @@
-"""High-level lighting effects for the AW-ELC 4-zone keyboard.
+"""High-level lighting effects for the AW-ELC chassis lights.
+
+On the m16/m18 R1/R2 family the ELC (187c:0551) drives the chassis
+lights, not the keyboard: ids 0 and 1 are the rear exhaust rings, 2 the
+lid logo, 4 and 5 the power button (alienfx-tools device tables; id 3
+is unused and ignored by the firmware). The per-key keyboard is a
+separate USB device, see keyboard.py. Multi-zone effects (wave, bounce)
+step across those lights in that order.
 
 Effect recipes ported from tr1xem/AWCC's EffectController (GPL-3.0), plus
 Cryo-specific "quantum" presets using the I4C palette.
@@ -18,8 +25,8 @@ log = logging.getLogger(__name__)
 
 T = TypeVar("T")
 
-# m18 R2 keyboard: four zones, left to right.
-KEYBOARD_ZONES = [0x00, 0x01, 0x02, 0x03]
+# Chassis light ids on 0551 laptops: exhaust rings, lid logo, power button.
+CHASSIS_ZONES = [0x00, 0x01, 0x02, 0x04, 0x05]
 
 # Animation slot used for user effects (same slot upstream uses, so Cryo
 # and stock awcc overwrite each other cleanly instead of stacking).
@@ -34,7 +41,7 @@ RAINBOW = [0xFF0000, 0xFFA500, 0xFFFF00, 0x008000, 0x00BFFF, 0x0000FF, 0x800080]
 
 class Effects:
     def __init__(self, zones: list[int] | None = None) -> None:
-        self.zones = zones or KEYBOARD_ZONES
+        self.zones = zones or CHASSIS_ZONES
         self._elc: _elc.Elc | None = None
 
     def available(self) -> bool:
