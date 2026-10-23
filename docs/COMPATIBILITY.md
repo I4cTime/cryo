@@ -70,10 +70,9 @@ output - working or not, both results grow this table.
 
 - AMD dGPU game detection (needs DRM fdinfo instead of NVML)
 - Pre-ELC lighting controllers (older AlienFX protocols)
-- Per-key patterns and two-colour fades on the keyboard backlight: the
-  keyboard mirrors each chassis effect with the closest firmware effect
-  (quantum breathes cyan; spectrum/rainbow become a wave/pulse in the
-  chosen colour)
+- Per-key patterns of your own on the keyboard backlight (quantum,
+  spectrum and rainbow are streamed to the keys at 8 fps; breathe, wave
+  and bounce use the keyboard firmware's effects)
 - Keyboards wired to the ELC itself (some G-Series / m15 models use ELC
   zones above 0x0f for the keyboard; those are not mapped yet)
 - Aurora/Area-51 desktops (thermals may work on models the driver
