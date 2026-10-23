@@ -50,6 +50,7 @@ every client renders only what exists. Reported so far:
 | Model | Verdict |
 | ----- | ------- |
 | Alienware m18 R2 (Intel + RTX 4080) | SUPPORTED — everything works (maintainer) |
+| Alienware 16X Aurora AC16251 (Core Ultra 9 275HX + RTX 5060) | SUPPORTED - everything works ([#21](https://github.com/I4cTime/cryo/issues/21)) |
 | Alienware Aurora R4 (2011 desktop) | LIMITED — GPU telemetry, game detection, turbo and CPU cap only ([#9](https://github.com/I4cTime/cryo/issues/9)) |
 
 No Dell G-Series report yet. See
