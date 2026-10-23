@@ -8,6 +8,7 @@ import socket
 import sys
 
 from cryo import __version__, paths
+from cryo.hw import keyboard
 from cryo.hw.thermal import COMPATIBILITY_URL
 
 EXIT_UNSUPPORTED = 2
@@ -64,15 +65,17 @@ def verdict(facts: dict) -> tuple[str, list[str]]:
     if not facts.get("profiles"):
         core.append("power modes (no readable platform profiles)")
     extras_present = any(
-        facts.get(k) for k in ("turbo", "cpu_cap", "elc", "nvml")
+        facts.get(k) for k in ("turbo", "cpu_cap", "elc", "keyboard", "nvml")
     )
     if core and not extras_present:
         return "unsupported", core + ["and no turbo, CPU cap, lighting or NVML to fall back on"]
     missing: list[str] = list(core)
     if not facts.get("fan_boost"):
         missing.append("fan boost (curves, manual boost, Thermal Guard)")
-    if not facts.get("elc"):
-        missing.append("AlienFX lighting (no AW-ELC controller)")
+    if not facts.get("elc") and not facts.get("keyboard"):
+        missing.append("AlienFX lighting (no AW-ELC controller, no per-key keyboard)")
+    elif not facts.get("elc"):
+        missing.append("chassis lighting (no AW-ELC controller; keyboard backlight only)")
     if not facts.get("nvml"):
         missing.append("game detection (no NVML)")
     if not facts.get("mains"):
@@ -151,6 +154,9 @@ def doctor() -> None:
     add("alienware usb (187c)", ", ".join(elc_pids) or "none")
     facts["elc"] = any(pid in ("0550", "0551") for pid in elc_pids)
     add("known AW-ELC", facts["elc"])
+    kbd = keyboard.find_keyboard()
+    facts["keyboard"] = kbd is not None
+    add("per-key keyboard (0d62)", f"{kbd[0]} ({kbd[1]}-byte report)" if kbd else "none")
 
     try:
         import pynvml
