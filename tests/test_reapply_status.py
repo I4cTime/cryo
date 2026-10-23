@@ -34,6 +34,7 @@ def make_engine(profile):
     engine.config = config_mod.merged({"lighting": {"restore": False}})
     engine.thermal = StubThermal(profile)
     engine.effects = SimpleNamespace(reset=lambda: None, available=lambda: False)
+    engine.keyboard = SimpleNamespace(reset=lambda: None, available=lambda: False)
     reinits: list[bool] = []
     engine.gpu = SimpleNamespace(
         reinit=lambda: reinits.append(True) or True, available=lambda: True
