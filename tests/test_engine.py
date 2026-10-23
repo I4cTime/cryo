@@ -1,4 +1,4 @@
-"""Engine logic tests — pure state machines, no hardware.
+"""Engine logic tests - pure state machines, no hardware.
 
 Engine.__init__ touches sysfs/USB/NVML, so guard tests build a bare
 instance via __new__ with a stub thermal controller.

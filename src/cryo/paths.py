@@ -1,7 +1,7 @@
 """Sysfs paths and discovery for alienware-wmi machines.
 
 Everything the daemon touches lives in sysfs, provided by the in-kernel
-alienware-wmi driver — no acpi_call, no custom kernel modules. Nothing
+alienware-wmi driver - no acpi_call, no custom kernel modules. Nothing
 here assumes a specific model: supplies, turbo controls, and the
 platform-profile node are discovered, not hardcoded.
 """
@@ -33,8 +33,8 @@ def find_platform_profile(driver: str = "alienware-wmi") -> tuple[Path, Path]:
 
     Prefers the per-handler node under /sys/class/platform-profile (kernel
     6.14+). The legacy aggregate /sys/firmware/acpi/platform_profile
-    rejects writing "custom" with EINVAL — on the aggregate, "custom" is a
-    read-only marker meaning "handlers disagree" — and once a second
+    rejects writing "custom" with EINVAL - on the aggregate, "custom" is a
+    read-only marker meaning "handlers disagree" - and once a second
     handler registers (e.g. Intel's processor_thermal_soc_slider) the
     aggregate no longer speaks for alienware-wmi alone anyway. The
     per-handler node accepts everything alienware-wmi itself declares,
@@ -80,9 +80,9 @@ def find_ac_supply() -> Path | None:
 def find_turbo_control() -> tuple[list[Path], bool] | None:
     """(paths, inverted) for the CPU turbo/boost toggle, or None.
 
-    Intel: intel_pstate/no_turbo (one file, 1 = turbo OFF — inverted).
+    Intel: intel_pstate/no_turbo (one file, 1 = turbo OFF - inverted).
     acpi-cpufreq: the global cpufreq/boost (one file, direct).
-    amd_pstate: no global knob — per-policy cpuX/cpufreq/boost files
+    amd_pstate: no global knob - per-policy cpuX/cpufreq/boost files
     (direct); reads use the first, writes fan out to all of them.
     """
     if NO_TURBO.exists():
@@ -102,7 +102,7 @@ def find_cpu_cap() -> Path | None:
     """The CPU performance-cap knob, or None.
 
     intel_pstate's max_perf_pct caps the highest P-state as a percentage of
-    the max (turbo) frequency — 90 on an m18 R2 is roughly a 5.2 GHz
+    the max (turbo) frequency - 90 on an m18 R2 is roughly a 5.2 GHz
     single-core ceiling. amd_pstate has no equivalent global knob, so the
     cap is reported as unavailable there rather than faked through
     scaling_max_freq.

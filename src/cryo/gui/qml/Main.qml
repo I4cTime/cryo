@@ -10,7 +10,7 @@ ApplicationWindow {
     width: 480
     height: 860
     minimumWidth: 440
-    title: daemon.modelName ? "Cryo — " + daemon.modelName : "Cryo"
+    title: daemon.modelName ? "Cryo - " + daemon.modelName : "Cryo"
     color: root.bg
     // Controls (and every Label) inherit the window font; Outfit is the UI
     // face, JetBrains Mono / tabular figures keep live numbers from jittering.
@@ -464,7 +464,7 @@ ApplicationWindow {
                 anchors.verticalCenterOffset: 2
                 Label {
                     anchors.horizontalCenter: parent.horizontalCenter
-                    text: tile.temp > 0 ? Math.round(tile.shown) : "—"
+                    text: tile.temp > 0 ? Math.round(tile.shown) : "-"
                     color: tile.temp >= 85 ? root.hot : root.fg
                     font.pixelSize: 28
                     font.weight: Font.DemiBold
@@ -1042,7 +1042,7 @@ ApplicationWindow {
     // ---------- layout ----------
 
     // Ambient backdrop: two faint neon washes at the top of the window.
-    // Static — tessellated once per resize.
+    // Static - tessellated once per resize.
     Shape {
         anchors.fill: parent
         ShapePath {
@@ -1110,7 +1110,7 @@ ApplicationWindow {
                         visible: false
                     }
                     MultiEffect {
-                        // static bloom — rendered once
+                        // static bloom - rendered once
                         source: brandMark
                         anchors.fill: brandMark
                         shadowEnabled: true
@@ -1177,7 +1177,7 @@ ApplicationWindow {
                 }
             }
 
-            // Daemon error banner — transient; daemon-side command failures
+            // Daemon error banner - transient; daemon-side command failures
             // (e.g. a rejected sysfs write) surface here instead of silently
             // doing nothing.
             Rectangle {
@@ -1212,7 +1212,7 @@ ApplicationWindow {
                 }
             }
 
-            // Power modes — rendered from the daemon's capability list, so
+            // Power modes - rendered from the daemon's capability list, so
             // Legacy-profile or no-G-Mode machines see exactly what exists.
             SectionTitle { text: "POWER MODES"; visible: daemon.hasProfiles }
             // All modes on one row: compact, still glowing when active.
@@ -1245,7 +1245,7 @@ ApplicationWindow {
                     wrapMode: Text.WordWrap
                     color: root.warn
                     font.pixelSize: 11
-                    text: "Limited mode — the alienware-wmi driver doesn't expose "
+                    text: "Limited mode - the alienware-wmi driver doesn't expose "
                           + (!daemon.hasThermals && !daemon.hasProfiles ? "fans, temperatures or power modes"
                              : !daemon.hasThermals ? "fans or temperatures" : "power modes")
                           + " on this machine. Everything shown below still works. See cryoctl doctor."
@@ -1295,7 +1295,7 @@ ApplicationWindow {
                 Mono { text: daemon.gpuUtil + "%"; color: root.fg; font.pixelSize: 11 }
             }
 
-            // VRAM — sparkline scaled to the card's full capacity, so a
+            // VRAM - sparkline scaled to the card's full capacity, so a
             // leak reads as a steady climb and healthy load as a plateau.
             // The per-process rows below it name the offender.
             Panel {
@@ -1448,11 +1448,11 @@ ApplicationWindow {
                         spacing: 10
                         Label {
                             text: !daemon.hasBoost
-                                  ? "Fan boost is not supported by this model's firmware — curves and manual boost are unavailable."
+                                  ? "Fan boost is not supported by this model's firmware - curves and manual boost are unavailable."
                                   : daemon.profile === "custom"
                                   ? (curvesSwitch.checked
-                                     ? "Curves active — boosts follow temperature."
-                                     : "Manual boost — drag the sliders.")
+                                     ? "Curves active - boosts follow temperature."
+                                     : "Manual boost - drag the sliders.")
                                   : "Fans follow the firmware in this mode. Custom mode hands them to Cryo."
                             color: daemon.hasBoost ? root.muted : root.warn
                             font.pixelSize: 11
@@ -1601,7 +1601,7 @@ ApplicationWindow {
                             Layout.fillWidth: true
                             spacing: 2
                             Label { Layout.fillWidth: true; wrapMode: Text.WordWrap; text: "Turbo Boost"; color: root.fg; font.pixelSize: 13 }
-                            Label { Layout.fillWidth: true; wrapMode: Text.WordWrap; text: "Off pins every core at its base clock — quiet and cool, slower."; color: root.muted; font.pixelSize: 11 }
+                            Label { Layout.fillWidth: true; wrapMode: Text.WordWrap; text: "Off pins every core at its base clock - quiet and cool, slower."; color: root.muted; font.pixelSize: 11 }
                         }
                         CryoSwitch {
                             checked: daemon.turbo
@@ -1630,7 +1630,7 @@ ApplicationWindow {
                                         if (pct !== undefined && pct < 100)
                                             parts.push((root.profileLabels[name] || name) + " " + pct + "%")
                                     }
-                                    return parts.length ? parts.join("  ·  ") : "No mode is capped yet — pick a mode, then drag."
+                                    return parts.length ? parts.join("  ·  ") : "No mode is capped yet - pick a mode, then drag."
                                 }
                                 color: root.muted
                                 font.pixelSize: 11
@@ -1710,7 +1710,7 @@ ApplicationWindow {
                                 wrapMode: Text.WordWrap
                                 // From the daemon's config, not a fixed string.
                                 property var rules: daemon.autoRules
-                                function label(name) { return name ? (root.profileLabels[name] || name) : "—" }
+                                function label(name) { return name ? (root.profileLabels[name] || name) : "-" }
                                 text: (daemon.hasGameSense ? "game → " + label(rules.on_game) + " · " : "")
                                       + "battery → " + label(rules.on_battery)
                                       + " · AC → " + label(rules.on_ac)
@@ -1862,7 +1862,7 @@ ApplicationWindow {
                 Layout.fillWidth: true
                 text: daemon.connected
                       ? "cryod · " + daemon.profile + " profile"
-                      : "cryod unreachable — is the service running?  sudo systemctl start cryod"
+                      : "cryod unreachable - is the service running?  sudo systemctl start cryod"
                 color: root.muted
                 font.pixelSize: 10
                 horizontalAlignment: Text.AlignHCenter

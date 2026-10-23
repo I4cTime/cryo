@@ -1,4 +1,4 @@
-"""cryod — the Cryo daemon. Run as root (systemd unit provided)."""
+"""cryod - the Cryo daemon. Run as root (systemd unit provided)."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from cryo.daemon.server import Server
 from cryo.hw.thermal import COMPATIBILITY_URL, UnsupportedHardware
 
 # sysexits.h EX_CONFIG: "unsupported machine" is a configuration verdict,
-# not a crash — cryod.service lists it in RestartPreventExitStatus so an
+# not a crash - cryod.service lists it in RestartPreventExitStatus so an
 # unsupported box gets one clear message instead of a restart loop.
 EXIT_UNSUPPORTED = 78
 
@@ -43,7 +43,7 @@ def main() -> None:
         sys.exit(EXIT_UNSUPPORTED)
     server = Server(engine, overrides)
     log.info(
-        "Cryo daemon up — profile=%s fans=%d curves=%s auto=%s%s",
+        "Cryo daemon up - profile=%s fans=%d curves=%s auto=%s%s",
         engine.thermal.profile() or "n/a",
         len(engine.thermal.fans),
         cfg["fan_curves"]["enabled"],

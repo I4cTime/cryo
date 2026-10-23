@@ -1,7 +1,7 @@
 """Runtime state the daemon owns: /var/lib/cryo/state.json.
 
 Kept apart from /etc/cryo/config.json on purpose. The config file is the
-user's — the daemon never rewrites it, so a two-line partial config stays
+user's - the daemon never rewrites it, so a two-line partial config stays
 partial and keeps tracking future defaults. Anything the daemon changes on
 its own (last lighting, the curves-off latch a manual boost sets) lives
 here instead.

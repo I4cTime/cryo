@@ -1,4 +1,4 @@
-"""GameDetector hysteresis and GpuSense process filtering — no NVML."""
+"""GameDetector hysteresis and GpuSense process filtering - no NVML."""
 
 from types import SimpleNamespace
 

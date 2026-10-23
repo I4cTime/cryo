@@ -6,14 +6,14 @@ built at startup from what the kernel actually advertises, because the
 mapping depends on the machine:
 
   * G-Mode-capable machines (m18 R2 and friends) expose BOTH
-    "balanced-performance" and "performance" — there, AWCC "Performance"
+    "balanced-performance" and "performance" - there, AWCC "Performance"
     is kernel "balanced-performance" and G-Mode is kernel "performance".
   * Machines without G-Mode expose plain "performance", which IS AWCC
-    Performance — translating it to G-Mode there would mislabel the mode.
+    Performance - translating it to G-Mode there would mislabel the mode.
   * Legacy-profile machines advertise a smaller set (quiet/balanced/
     performance); anything the kernel doesn't list simply isn't offered.
 
-Fan boost is probed rather than assumed — the kernel docs note boost "is
+Fan boost is probed rather than assumed - the kernel docs note boost "is
 not implemented in every model". Without it, curves and the thermal
 guard have nothing to actuate and must disable themselves visibly.
 """
@@ -58,7 +58,7 @@ class ThermalController:
         self.hwmon = paths.find_hwmon()
         if self.hwmon is None:
             self.missing.append(
-                "alienware-wmi hwmon (fan RPM, temperatures, fan boost) — the "
+                "alienware-wmi hwmon (fan RPM, temperatures, fan boost) - the "
                 "driver does not cover this model's thermals"
             )
             self.fans: list[Fan] = []
@@ -66,7 +66,7 @@ class ThermalController:
         else:
             self.fans = self._discover_fans()
             self.temps = self._discover_temps()  # {"cpu": index, "gpu": index}
-        # Per-handler node when available — the legacy aggregate rejects
+        # Per-handler node when available - the legacy aggregate rejects
         # writing "custom" on kernel 6.14+ (see paths.find_platform_profile).
         self.profile_path, self.profile_choices_path = paths.find_platform_profile()
         try:
@@ -116,7 +116,7 @@ class ThermalController:
             elif choice == "performance":
                 to_kernel["gmode" if self.has_gmode else "performance"] = choice
             else:
-                # cool / quiet / balanced / custom / low-power — 1:1 names.
+                # cool / quiet / balanced / custom / low-power - 1:1 names.
                 to_kernel[choice] = choice
         self.profile_to_kernel = to_kernel
         self.kernel_to_profile = {v: k for k, v in to_kernel.items()}

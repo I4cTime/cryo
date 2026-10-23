@@ -1,4 +1,4 @@
-"""cryoctl — talk to the Cryo daemon from the shell."""
+"""cryoctl - talk to the Cryo daemon from the shell."""
 
 from __future__ import annotations
 
@@ -14,14 +14,14 @@ from cryo.hw.thermal import COMPATIBILITY_URL
 EXIT_UNSUPPORTED = 2
 
 USAGE = """\
-cryoctl — Cryo control CLI
+cryoctl - Cryo control CLI
 
   cryoctl --version                  Print cryoctl's version (status shows cryod's)
   cryoctl status [--json]            Show telemetry snapshot (--json: raw frame)
   cryoctl watch [--log FILE.csv]     Stream live telemetry (--log: append CSV,
                                      made for long leak-hunt sessions)
   cryoctl profile <name>             cool|quiet|balanced|performance|gmode|custom
-                                     (availability varies by model — see doctor)
+                                     (availability varies by model - see doctor)
   cryoctl gmode                      Toggle G-Mode
   cryoctl boost <cpu|gpu> <0-100>    Manual fan boost (disables curves)
   cryoctl turbo <on|off>             CPU turbo boost
@@ -51,13 +51,13 @@ cryoctl — Cryo control CLI
 def verdict(facts: dict) -> tuple[str, list[str]]:
     """Classify a machine from doctor's findings.
 
-    supported   — everything Cryo knows how to do is available.
-    partial     — the daemon runs with full thermals; listed extras missing.
-    limited     — no hwmon and/or no platform profiles: fans, curves, the
+    supported   - everything Cryo knows how to do is available.
+    partial     - the daemon runs with full thermals; listed extras missing.
+    limited     - no hwmon and/or no platform profiles: fans, curves, the
                   guard and power modes are out, but the daemon still runs
                   what exists (GPU telemetry, game detection, turbo, CPU
                   cap, lighting).
-    unsupported — nothing at all to drive: cryod refuses to start.
+    unsupported - nothing at all to drive: cryod refuses to start.
     """
     core: list[str] = []
     if not facts.get("hwmon"):
@@ -90,7 +90,7 @@ def verdict(facts: dict) -> tuple[str, list[str]]:
 
 
 def doctor() -> None:
-    """Daemon-optional hardware report — everything read is world-readable."""
+    """Daemon-optional hardware report - everything read is world-readable."""
     lines: list[str] = []
 
     def add(label: str, value: object) -> None:
@@ -186,13 +186,13 @@ def doctor() -> None:
     level, reasons = verdict(facts)
     lines.append("")
     if level == "supported":
-        add("verdict", "SUPPORTED — everything Cryo does is available here")
+        add("verdict", "SUPPORTED - everything Cryo does is available here")
     elif level == "partial":
-        add("verdict", "PARTIAL — cryod runs; unavailable: " + "; ".join(reasons))
+        add("verdict", "PARTIAL - cryod runs; unavailable: " + "; ".join(reasons))
     elif level == "limited":
-        add("verdict", "LIMITED — cryod runs what exists; unavailable: " + "; ".join(reasons))
+        add("verdict", "LIMITED - cryod runs what exists; unavailable: " + "; ".join(reasons))
     else:
-        add("verdict", "UNSUPPORTED — " + "; ".join(reasons))
+        add("verdict", "UNSUPPORTED - " + "; ".join(reasons))
         add("", "cryod will not start on this machine.")
     add("compatibility", COMPATIBILITY_URL)
 
@@ -223,7 +223,7 @@ def fmt_status(st: dict) -> str:
             for f in st.get("fans", [])
             if f.get("group") == group
         )
-        parts = [f"{temp:.0f}°C" if temp is not None else "—"]
+        parts = [f"{temp:.0f}°C" if temp is not None else "-"]
         if peak:
             parts.append(f"peak {peak:.0f}°C")
         if fans:
@@ -278,7 +278,7 @@ def parse_curve_points(tokens: list[str]) -> list[list[int]]:
             temp, boost = token.split(":")
             points.append([int(temp), int(boost)])
         except ValueError:
-            sys.exit(f"cryoctl: bad curve point {token!r} — expected TEMP:BOOST, e.g. 70:35")
+            sys.exit(f"cryoctl: bad curve point {token!r} - expected TEMP:BOOST, e.g. 70:35")
     return points
 
 

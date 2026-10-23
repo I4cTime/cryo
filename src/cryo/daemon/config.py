@@ -3,7 +3,7 @@ over defaults so a partial file is always valid.
 
 The file holds *overrides only*. The daemon reads it at startup and, when
 the GUI, `cryoctl curve/guard/cap` or a raw `set_config` changes something,
-writes the updated overrides back — never the merged result, so defaults
+writes the updated overrides back - never the merged result, so defaults
 added in later releases keep applying to keys the user never touched.
 Every patch is validated (`validate_patch`) before it is merged or saved.
 """
@@ -65,7 +65,7 @@ DEFAULTS: dict = {
         "game_exit_util": 20,
         "game_exit_secs": 45,
         "game_min_vram_mb": 400,
-        # exact (lowercased) process basenames, never substrings — a game
+        # exact (lowercased) process basenames, never substrings - a game
         # binary like StarRuptureGameSteam-Win64-Shipping.exe must not be
         # eaten by a "steam" pattern.
         "game_ignore": [
@@ -144,7 +144,7 @@ def validate_patch(patch: dict) -> dict:
     """Check the keys Cryo's editors write; return a normalized copy.
 
     Keys this doesn't know about pass through untouched (the config file
-    is the user's), but anything the daemon actuates from must be sane —
+    is the user's), but anything the daemon actuates from must be sane:
     a curve with falling temperatures or a 5% CPU cap would otherwise be
     written to sysfs verbatim.
     """

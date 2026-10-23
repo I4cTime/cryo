@@ -1,5 +1,5 @@
 name: Model compatibility report
-description: Report how Cryo behaves on your Alienware / Dell G-Series machine — working or not, both help.
+description: Report how Cryo behaves on your Alienware / Dell G-Series machine - working or not, both help.
 title: "[model] "
 labels: ["compatibility"]
 body:
@@ -23,7 +23,7 @@ body:
     id: works
     attributes:
       label: What works / what doesn't
-      description: Power modes, curves, Guard, G-Mode, lighting, game detection, auto profiles — a quick pass through each is perfect.
+      description: Power modes, curves, Guard, G-Mode, lighting, game detection, auto profiles - a quick pass through each is perfect.
     validations:
       required: true
   - type: textarea

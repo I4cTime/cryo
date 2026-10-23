@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Cryo installer — sets up the venv, /etc/cryo, the systemd unit, CLI symlinks, icons and a .desktop entry.
+# Cryo installer - sets up the venv, /etc/cryo, the systemd unit, CLI symlinks, icons and a .desktop entry.
 set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"

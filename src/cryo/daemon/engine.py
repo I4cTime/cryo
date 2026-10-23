@@ -40,7 +40,7 @@ def interpolate(curve: list[list[float]], temp: float) -> int:
 class Engine:
     def __init__(self, config: dict, state: dict | None = None) -> None:
         self.config = config
-        # Runtime state the daemon owns (see daemon/state.py) — kept out of
+        # Runtime state the daemon owns (see daemon/state.py) - kept out of
         # the user's config file.
         self.state = state if state is not None else state_mod.load()
         self.thermal = ThermalController()
@@ -87,18 +87,18 @@ class Engine:
         if not drivable:
             raise UnsupportedHardware(
                 "no alienware-wmi hwmon, no platform profiles, no CPU turbo or "
-                "cap control, no AW-ELC lighting and no NVML — there is nothing "
+                "cap control, no AW-ELC lighting and no NVML - there is nothing "
                 "here for Cryo to drive."
             )
         if self.thermal.missing:
             log.warning(
-                "LIMITED mode — %s. GPU telemetry, game detection, turbo, CPU "
+                "LIMITED mode - %s. GPU telemetry, game detection, turbo, CPU "
                 "cap and lighting still run where present.",
                 "; ".join(self.thermal.missing),
             )
         if self.thermal.has_thermals and not self.thermal.boost_ok:
             log.warning(
-                "fan boost unsupported on this model — curves and thermal "
+                "fan boost unsupported on this model - curves and thermal "
                 "guard cannot actuate and are disabled"
             )
 
@@ -280,7 +280,7 @@ class Engine:
         """Map a configured profile name onto what this machine offers.
 
         Config files written for a G-Mode machine say things like
-        on_game: gmode — on a machine without G-Mode the nearest real
+        on_game: gmode - on a machine without G-Mode the nearest real
         profile is performance. Returns None if nothing fits.
         """
         available = self.thermal.profile_to_kernel
@@ -395,7 +395,7 @@ class Engine:
         ):
             self._apply_curves(telemetry, curves)
 
-        # Config state the GUI mirrors (switches, lighting controls) — one
+        # Config state the GUI mirrors (switches, lighting controls) - one
         # data path for everything the UI shows.
         telemetry["curves_enabled"] = curves_on
         telemetry["auto_enabled"] = auto["enabled"]
@@ -428,7 +428,7 @@ class Engine:
                 self._guard_active = True
                 self._guard_engaged_at = time.monotonic()
                 log.warning(
-                    "THERMAL GUARD engaged (cpu=%s gpu=%s) — fans to %s%%",
+                    "THERMAL GUARD engaged (cpu=%s gpu=%s) - fans to %s%%",
                     cpu, gpu, guard["boost"],
                 )
             except OSError as exc:
