@@ -37,7 +37,9 @@ from __future__ import annotations
 import fcntl
 import logging
 import os
+import threading
 import time
+from typing import Callable
 from pathlib import Path
 
 log = logging.getLogger(__name__)
@@ -66,6 +68,10 @@ EFFECT_PULSE = 0x08
 EFFECT_RIDER = 0x0A
 DEFAULT_TEMPO = 0x07
 STATUS_BUSY = 0x80
+# Light indices run row-major over the 20x8 grid, so a key's column is
+# index % 20 (Delete 15, Backspace 34/35, the numpad column at 16, 36, 56,
+# 76, 96, 116 all check out against alienfx-tools' m18 R2 map).
+GRID_COLUMNS = 20
 
 HIDRAW_CLASS = Path("/sys/class/hidraw")
 
@@ -120,25 +126,16 @@ def effect_packet(kind: int, colors: list[int], tempo: int = DEFAULT_TEMPO,
 
 def keyboard_plan(effect: str, color: int) -> tuple[int | None, list[int]]:
     """(built-in effect type or None for a solid colour, colours) that
-    mirrors a chassis effect on the keyboard. The firmware has no smooth
-    two-colour mode, so quantum breathes in cyan and the rainbow effects
-    become a wave / pulse in the chosen colour."""
-    from cryo.hw.effects import QUANTUM_CYAN
-
+    mirrors a chassis effect on the keyboard with a firmware effect.
+    Multi-colour effects (quantum, spectrum, rainbow) are not here: the
+    firmware has no smooth multi-colour mode, so cryo streams frames for
+    those (see FRAMES)."""
     color &= 0xFFFFFF
     match effect:
         case "off":
             return None, [0x000000]
-        case "static":
-            return None, [color]
-        case "quantum":
-            return EFFECT_BREATHE, [QUANTUM_CYAN]
         case "breathe":
             return EFFECT_BREATHE, [color]
-        case "spectrum":
-            return EFFECT_WAVE, [color]
-        case "rainbow":
-            return EFFECT_PULSE, [color]
         case "wave":
             return EFFECT_WAVE, [color]
         case "backforth":
@@ -147,9 +144,58 @@ def keyboard_plan(effect: str, color: int) -> tuple[int | None, list[int]]:
             return None, [color]
 
 
-def keyboard_color(effect: str, color: int) -> int:
-    """The solid colour the keyboard shows for a chassis effect."""
-    return keyboard_plan(effect, color)[1][0]
+# -- software-animated frames -------------------------------------------------
+
+Frame = dict[int, int]
+FrameFn = Callable[[float], Frame]
+FRAME_INTERVAL = 0.125  # 8 fps: a full-keyboard frame is ~14 feature reports
+
+
+def _lerp(a: int, b: int, f: float) -> int:
+    f = max(0.0, min(1.0, f))
+    ch = lambda shift: round(((a >> shift) & 0xFF) + (((b >> shift) & 0xFF) - ((a >> shift) & 0xFF)) * f)
+    return (ch(16) << 16) | (ch(8) << 8) | ch(0)
+
+
+def _along(colors: list[int], pos: float) -> int:
+    """Colour at a fractional position along a looping colour list."""
+    n = len(colors)
+    pos %= n
+    k = int(pos)
+    return _lerp(colors[k], colors[(k + 1) % n], pos - k)
+
+
+def quantum_frame(t: float) -> Frame:
+    """Cyan <-> violet morph, 3 s per leg like the chassis."""
+    from cryo.hw.effects import QUANTUM_CYAN, QUANTUM_VIOLET
+
+    rgb = _along([QUANTUM_CYAN, QUANTUM_VIOLET], t / 3.0)
+    return {i: rgb for i in range(KEY_COUNT)}
+
+
+def spectrum_frame(t: float) -> Frame:
+    """Every key cycles through the rainbow together, 2 s per colour."""
+    from cryo.hw.effects import RAINBOW
+
+    rgb = _along(RAINBOW, t / 2.0)
+    return {i: rgb for i in range(KEY_COUNT)}
+
+
+def rainbow_frame(t: float) -> Frame:
+    """The rainbow spread across the key columns, scrolling left to right
+    (one full cycle every 3.5 s, matching the chassis' 0.5 s steps)."""
+    from cryo.hw.effects import RAINBOW
+
+    n = len(RAINBOW)
+    return {i: _along(RAINBOW, (t / 3.5 - (i % GRID_COLUMNS) / GRID_COLUMNS) * n)
+            for i in range(KEY_COUNT)}
+
+
+FRAMES: dict[str, FrameFn] = {
+    "quantum": quantum_frame,
+    "spectrum": spectrum_frame,
+    "rainbow": rainbow_frame,
+}
 
 
 # -- device discovery -------------------------------------------------------
@@ -252,12 +298,21 @@ class HidrawTransport:
 
 
 class Keyboard:
-    """Solid-colour and brightness control of the per-key keyboard."""
+    """Colour, brightness, firmware effects and streamed animations on the
+    per-key keyboard. Safe to call from the daemon thread while an
+    animation thread streams frames: every device operation holds _lock."""
 
-    def __init__(self, transport_factory=None) -> None:
+    def __init__(self, transport_factory=None, frame_interval: float = FRAME_INTERVAL,
+                 clock: Callable[[], float] = time.monotonic) -> None:
         self._factory = transport_factory or self._open
         self._transport: HidrawTransport | None = None
         self.length = DEFAULT_REPORT_LEN
+        self._lock = threading.RLock()
+        self._interval = frame_interval
+        self._clock = clock
+        self._anim_stop = threading.Event()
+        self._anim_thread: threading.Thread | None = None
+        self.frames_sent = 0
 
     @staticmethod
     def _open() -> HidrawTransport:
@@ -271,11 +326,13 @@ class Keyboard:
         return find_keyboard() is not None
 
     def reset(self) -> None:
-        """Drop the handle; the next call reopens (after resume the hidraw
-        node can be a new one)."""
-        if self._transport is not None:
-            self._transport.close()
-        self._transport = None
+        """Stop any animation and drop the handle; the next call reopens
+        (after resume the hidraw node can be a new one)."""
+        self.stop_animation()
+        with self._lock:
+            if self._transport is not None:
+                self._transport.close()
+            self._transport = None
 
     def _device(self) -> HidrawTransport:
         if self._transport is None:
@@ -284,12 +341,15 @@ class Keyboard:
         return self._transport
 
     def _retrying(self, fn):
-        try:
-            return fn()
-        except OSError as exc:
-            log.warning("keyboard write failed (%s); reopening", exc)
-            self.reset()
-            return fn()
+        with self._lock:
+            try:
+                return fn()
+            except OSError as exc:
+                log.warning("keyboard write failed (%s); reopening", exc)
+                if self._transport is not None:
+                    self._transport.close()
+                self._transport = None
+                return fn()
 
     def _begin(self, dev: HidrawTransport) -> None:
         dev.send(packet(CMD_RESET, length=dev.length))
@@ -312,24 +372,89 @@ class Keyboard:
                 return
             time.sleep(0.02)
 
+    def _leave_effect(self, dev: HidrawTransport) -> None:
+        """Leave any built-in effect, else plain colours never show."""
+        self._begin(dev)
+        dev.send(packet(CMD_EFFECT, bytes([EFFECT_OFF, 0xFE]), dev.length))
+        dev.send(packet(CMD_UPDATE, length=dev.length))
+        self._wait_ready(dev)
+
+    def _frame(self, dev: HidrawTransport, colors: dict[int, int]) -> None:
+        self._begin(dev)
+        for pkt in color_packets(colors, dev.length):
+            dev.send(pkt)
+        dev.send(packet(CMD_LOOP, length=dev.length))
+        dev.send(packet(CMD_UPDATE, length=dev.length))
+
     def set_colors(self, colors: dict[int, int]) -> None:
+        self.stop_animation()
+
         def op() -> None:
             dev = self._device()
-            self._begin(dev)
-            # leave any built-in effect first, else the colours never show
-            dev.send(packet(CMD_EFFECT, bytes([EFFECT_OFF, 0xFE]), dev.length))
-            dev.send(packet(CMD_UPDATE, length=dev.length))
-            self._wait_ready(dev)
-            self._begin(dev)
-            for pkt in color_packets(colors, dev.length):
-                dev.send(pkt)
-            dev.send(packet(CMD_LOOP, length=dev.length))
-            dev.send(packet(CMD_UPDATE, length=dev.length))
+            self._leave_effect(dev)
+            self._frame(dev, colors)
 
         self._retrying(op)
 
     def set_color(self, rgb: int) -> None:
         self.set_colors({i: rgb for i in range(KEY_COUNT)})
+
+    # -- streamed animations -------------------------------------------------
+
+    def animate(self, frame_fn: FrameFn) -> None:
+        """Stream frame_fn(seconds since start) to the keys until the next
+        colour, effect or reset. The first frame is sent synchronously so a
+        failure (no device) surfaces to the caller like any other write."""
+        self.stop_animation()
+
+        def first() -> None:
+            dev = self._device()
+            self._leave_effect(dev)
+            self._frame(dev, frame_fn(0.0))
+
+        self._retrying(first)
+        self._anim_stop = threading.Event()
+        stop = self._anim_stop
+        start = self._clock()
+
+        def run() -> None:
+            failures = 0
+            spent = 0.0
+            while not stop.wait(self._interval):
+                try:
+                    t0 = time.monotonic()
+                    with self._lock:
+                        if stop.is_set():
+                            return
+                        self._frame(self._device(), frame_fn(self._clock() - start))
+                    spent += time.monotonic() - t0
+                    self.frames_sent += 1
+                    failures = 0
+                    if self.frames_sent == 40:  # one-off cost report per animation
+                        log.info("keyboard animation: %.0f ms per frame over 40 frames", spent / 40 * 1000)
+                except OSError as exc:
+                    failures += 1
+                    if failures == 1:
+                        log.warning("keyboard frame failed (%s); retrying", exc)
+                    with self._lock:
+                        if self._transport is not None:
+                            self._transport.close()
+                        self._transport = None
+                    if failures >= 5:
+                        log.warning("keyboard animation stopped after repeated failures")
+                        return
+
+        self._anim_thread = threading.Thread(target=run, name="cryo-kbd-anim", daemon=True)
+        self._anim_thread.start()
+
+    def stop_animation(self) -> None:
+        thread = self._anim_thread
+        if thread is None:
+            return
+        self._anim_stop.set()
+        if thread is not threading.current_thread():
+            thread.join(timeout=2.0)
+        self._anim_thread = None
 
     def brightness(self, percent: int) -> None:
         def op() -> None:
@@ -340,6 +465,8 @@ class Keyboard:
         self._retrying(op)
 
     def effect(self, kind: int, colors: list[int], tempo: int = DEFAULT_TEMPO) -> None:
+        self.stop_animation()
+
         def op() -> None:
             dev = self._device()
             self._begin(dev)
@@ -355,6 +482,9 @@ class Keyboard:
         """Mirror a chassis lighting effect on the keyboard."""
         if brightness is not None:
             self.brightness(brightness)
+        if effect in FRAMES:
+            self.animate(FRAMES[effect])
+            return
         kind, colors = keyboard_plan(effect, color)
         if kind is None:
             self.set_color(colors[0])

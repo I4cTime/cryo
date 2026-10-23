@@ -66,11 +66,28 @@ def test_brightness_scales_percent_to_byte():
     assert kb.brightness_packet(250)[4] == 255  # clamped
 
 
-def test_keyboard_color_for_effects():
-    assert kb.keyboard_color("off", 0xFF0000) == 0
-    assert kb.keyboard_color("quantum", 0xFF0000) == 0x00D1FF
-    assert kb.keyboard_color("static", 0xFF0000) == 0xFF0000
-    assert kb.keyboard_color("breathe", 0x7B2DFF) == 0x7B2DFF
+def test_frames_quantum_morphs_cyan_to_violet_in_three_seconds():
+    f0, f3, f6 = kb.quantum_frame(0.0), kb.quantum_frame(3.0), kb.quantum_frame(6.0)
+    assert set(f0.values()) == {0x00D1FF} and len(f0) == kb.KEY_COUNT
+    assert set(f3.values()) == {0x7B2DFF}
+    assert set(f6.values()) == {0x00D1FF}
+    mid = kb.quantum_frame(1.5)[0]
+    assert 0x00D1FF != mid != 0x7B2DFF and (mid >> 16) == round(0x7B / 2)
+
+
+def test_frames_spectrum_cycles_rainbow_together():
+    assert set(kb.spectrum_frame(0.0).values()) == {0xFF0000}
+    assert set(kb.spectrum_frame(2.0).values()) == {0xFFA500}
+    assert set(kb.spectrum_frame(14.0).values()) == {0xFF0000}
+
+
+def test_frames_rainbow_varies_by_column_only():
+    f = kb.rainbow_frame(0.0)
+    assert f[0] == f[20] == f[40]  # same column, every row
+    assert len({f[c] for c in range(20)}) > 10  # spread across the row
+    assert f[0] == 0xFF0000
+    later = kb.rainbow_frame(0.5)
+    assert later[0] != f[0]  # it scrolls
 
 
 def test_set_color_sequence_reset_status_blocks_loop_update():
@@ -153,19 +170,50 @@ def test_effect_packet_layout():
 def test_keyboard_plan_maps_chassis_effects():
     assert kb.keyboard_plan("static", 0xFF0000) == (None, [0xFF0000])
     assert kb.keyboard_plan("off", 0xFF0000) == (None, [0])
-    assert kb.keyboard_plan("quantum", 0) == (kb.EFFECT_BREATHE, [0x00D1FF])
-    assert kb.keyboard_plan("spectrum", 0x3DDC97) == (kb.EFFECT_WAVE, [0x3DDC97])
-    assert kb.keyboard_plan("rainbow", 0x3DDC97) == (kb.EFFECT_PULSE, [0x3DDC97])
+    assert set(kb.FRAMES) == {"quantum", "spectrum", "rainbow"}
     assert kb.keyboard_plan("breathe", 0x3DDC97) == (kb.EFFECT_BREATHE, [0x3DDC97])
     assert kb.keyboard_plan("wave", 0x3DDC97)[0] == kb.EFFECT_WAVE
     assert kb.keyboard_plan("backforth", 0x3DDC97)[0] == kb.EFFECT_RIDER
 
 
-def test_apply_animated_effect_sends_effect_then_update():
+def test_apply_firmware_effect_sends_effect_then_update():
     t = FakeTransport()
     k = kb.Keyboard(transport_factory=lambda: t)
-    k.apply("quantum", 0, None)
+    k.apply("breathe", 0x7B2DFF, None)
     assert [p[1] for p in t.sent] == [0x94, 0x93, 0x80, 0x8B]
+    assert t.sent[2][2] == kb.EFFECT_BREATHE
+
+
+def test_apply_quantum_streams_frames_until_the_next_colour():
+    import time as _time
+
+    t = FakeTransport()
+    now = [0.0]
+    k = kb.Keyboard(transport_factory=lambda: t, frame_interval=0.005, clock=lambda: now[0])
+    k.apply("quantum", 0, None)
+    first = [p for p in t.sent if p[1] == 0x8C and p[2] == 0x02]
+    assert len(first) == 10 and first[0][5:8] == b"\x00\xd1\xff"  # synchronous first frame
+    now[0] = 3.0
+    deadline = _time.monotonic() + 2
+    while k.frames_sent < 2 and _time.monotonic() < deadline:
+        _time.sleep(0.005)
+    assert k.frames_sent >= 2
+    violet = [p for p in t.sent if p[1] == 0x8C and p[2] == 0x02 and p[5:8] == b"\x7b\x2d\xff"]
+    assert violet  # a later frame carried the morphed colour
+    k.set_color(0xFF0000)
+    assert k._anim_thread is None
+    sent = k.frames_sent
+    _time.sleep(0.03)
+    assert k.frames_sent == sent  # nothing streams after a solid colour
+
+
+def test_reset_stops_the_animation():
+    t = FakeTransport()
+    k = kb.Keyboard(transport_factory=lambda: t, frame_interval=0.005)
+    k.apply("rainbow", 0, None)
+    assert k._anim_thread is not None
+    k.reset()
+    assert k._anim_thread is None and t.closed
 
 
 def test_set_color_leaves_builtin_effect_first():
