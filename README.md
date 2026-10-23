@@ -37,8 +37,11 @@ modules — that does things stock AWCC (and the Windows original) don't:
   clocks, VRAM usage with session peak and a per-process breakdown,
   sparkline history — in-window, in the tray tooltip, and streamable to
   CSV with `cryoctl watch --log` for long debugging sessions.
-- **AlienFX lighting** — 4-zone keyboard effects (protocol ported from
-  AWCC), including a `quantum` cyan↔violet preset, restored on boot.
+- **AlienFX lighting** — chassis effects on the rear rings, lid logo and
+  power button (AW-ELC protocol ported from AWCC), including a `quantum`
+  cyan↔violet preset, plus the per-key keyboard backlight (a separate
+  Darfon USB device on the m16/m18: colour, brightness and its firmware
+  breathe / wave / pulse / night-rider effects), all restored on boot.
 
 ## Will it work on my machine?
 
@@ -50,6 +53,7 @@ every client renders only what exists. Reported so far:
 | Model | Verdict |
 | ----- | ------- |
 | Alienware m18 R2 (Intel + RTX 4080) | SUPPORTED — everything works (maintainer) |
+| Alienware 16X Aurora AC16251 (Core Ultra 9 275HX + RTX 5060) | SUPPORTED - everything works ([#21](https://github.com/I4cTime/cryo/issues/21)) |
 | Alienware Aurora R4 (2011 desktop) | LIMITED — GPU telemetry, game detection, turbo and CPU cap only ([#9](https://github.com/I4cTime/cryo/issues/9)) |
 
 No Dell G-Series report yet. See
@@ -78,7 +82,9 @@ cryoctl doctor   # hardware/driver report with a supported / partial /
 Everything thermal goes through sysfs (`alienware-wmi` kernel driver):
 the per-handler node under `/sys/class/platform-profile/` and the
 `alienware_wmi` hwmon (`fan*_boost`, `fan*_input`, `temp*_input`).
-Lighting talks to the AW-ELC USB controller (`187c:0550/0551`) directly.
+Lighting talks to the AW-ELC USB controller (`187c:0550/0551`) for the
+chassis lights and, where present, to the Darfon per-key keyboard
+(`0d62:aab1`/`bab1`) over hidraw for the backlight.
 
 Profile names are translated per machine from what the kernel advertises.
 On G-Mode-capable models:
@@ -142,8 +148,12 @@ driver is missing, so starting before the driver loads is fine.
 
 ## Notes
 
-- Lighting protocol ported from tr1xem/AWCC (GPL-3.0); this repo is
-  GPL-3.0-or-later accordingly.
+- Lighting protocol ported from tr1xem/AWCC (GPL-3.0); the keyboard
+  protocol follows T-Troll/alienfx-tools and tr1xem/alienfx-linux. This
+  repo is GPL-3.0-or-later accordingly.
+- On the m18 R2 the power button follows the effect, which replaces the
+  controller's stock "blue on AC" power-state colour. That setting lives
+  in the controller; AWCC on Windows reprograms it if you dual-boot.
 - Game detection needs the NVIDIA driver's NVML (present with the
   proprietary driver). Without it, Cryo degrades to manual + AC/battery
   rules only.

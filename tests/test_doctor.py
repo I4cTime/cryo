@@ -60,3 +60,15 @@ def test_dmi_model_drops_the_duplicated_brand(monkeypatch, tmp_path):
     assert paths.dmi_model() == "Alienware m18 R2"
     (tmp_path / "product_name").write_text("Aurora R4\n")
     assert paths.dmi_model() == "Alienware Aurora R4"
+
+
+def test_keyboard_without_elc_is_partial_with_chassis_reason():
+    level, reasons = verdict({**FULL, "elc": False, "keyboard": True})
+    assert level == "partial"
+    assert any("chassis lighting" in r for r in reasons)
+
+
+def test_no_lighting_device_names_both():
+    level, reasons = verdict({**FULL, "elc": False, "keyboard": False})
+    assert level == "partial"
+    assert any("no per-key keyboard" in r for r in reasons)

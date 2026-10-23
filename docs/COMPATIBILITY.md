@@ -20,7 +20,8 @@ only what exists.
 | CPU Turbo toggle | `intel_pstate/no_turbo` or `cpufreq/boost` | Toggle hidden |
 | CPU power cap (per mode) | `intel_pstate/max_perf_pct` (Intel; amd_pstate has no global knob) | Cap card hidden, `cryoctl cap` reports it unavailable |
 | Game detection | NVIDIA proprietary driver (NVML) | Auto-G-Mode off; manual modes unaffected |
-| AlienFX lighting | AW-ELC USB controller `187c:0550/0551` (≈2020+ m/x-series keyboards) | Lighting section hidden |
+| AlienFX lighting (chassis: rings, lid logo, power button) | AW-ELC USB controller `187c:0550/0551` (≈2020+ m/x-series) | Lighting section hidden unless a keyboard backlight exists |
+| Keyboard backlight (colour, brightness, firmware breathe/wave/pulse/rider) | Darfon per-key keyboard `0d62:aab1`/`bab1` ("DELL Technologies Keyboard", m16/m18 R1/R2) | Keyboard keeps its firmware lighting; chassis effects unaffected |
 
 Profile naming is translated per machine: on G-Mode models the kernel's
 `balanced-performance` is AWCC "Performance" and `performance` is
@@ -32,11 +33,24 @@ builds this mapping from the kernel's advertised choices at startup.
 | Model | Verdict | Thermals | Curves/Guard | G-Mode | Lighting | Game sense | Reported by |
 |---|---|---|---|---|---|---|---|
 | Alienware m18 R2 (Intel + RTX 4080) | SUPPORTED | ✅ | ✅ | ✅ | ✅ | ✅ | maintainer |
+| Alienware 16X Aurora AC16251 (Core Ultra 9 275HX + RTX 5060 Laptop) | SUPPORTED | ✅ | ✅ | ✅ | ✅ | ✅ | [#21](https://github.com/I4cTime/cryo/issues/21) |
 | Alienware Aurora R4 (2011 desktop, RTX 5060 Ti) | LIMITED | ❌ | ❌ | ❌ | ❌ | ✅ | [#9](https://github.com/I4cTime/cryo/issues/9) |
 
 The Aurora R4 loads alienware-wmi but gets no hwmon or platform profiles
 from it, and its `187c:0513` lighting controller predates AW-ELC. GPU
 telemetry, game detection, turbo and the CPU cap work in limited mode.
+
+The 16X Aurora (2026, Arrow Lake-HX) is the first community SUPPORTED
+report, on kernel 7.2 (CachyOS): all six platform profiles, both fan
+boost files, the AW-ELC `187c:0551` controller and NVML, with the
+Thermal Guard, curves, turbo toggle and CPU cap all verified. G-Mode was
+switched but not yet stress-tested in a game. One data point from that
+report: without Cryo the stock EC fan response trailed a sudden all-core
+spike by 15-20 s with the package already past 90 °C; with the Guard
+(default `cpu_trip=88`) the fans were ramping within the first 1 s poll.
+An instant synthetic spike can still touch Tjmax for a few seconds before
+the fans physically catch up - that is fan spin-up time, not something
+software can outrun; the Guard's win is on sustained loads.
 
 **Have a different Alienware or Dell G-Series machine?** Run:
 
@@ -55,7 +69,13 @@ output — working or not, both results grow this table.
 ## Known out of scope (for now)
 
 - AMD dGPU game detection (needs DRM fdinfo instead of NVML)
-- Pre-ELC lighting controllers (older AlienFX protocols, per-key RGB)
+- Pre-ELC lighting controllers (older AlienFX protocols)
+- Per-key patterns and two-colour fades on the keyboard backlight: the
+  keyboard mirrors each chassis effect with the closest firmware effect
+  (quantum breathes cyan; spectrum/rainbow become a wave/pulse in the
+  chosen colour)
+- Keyboards wired to the ELC itself (some G-Series / m15 models use ELC
+  zones above 0x0f for the keyboard; those are not mapped yet)
 - Aurora/Area-51 desktops (thermals may work on models the driver
   covers; entirely untested). Pre-2012 desktops (e.g. Aurora R4, USB
   lighting id `187c:0513`) get no hwmon or profiles from alienware-wmi

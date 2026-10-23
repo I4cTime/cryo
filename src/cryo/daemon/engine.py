@@ -15,6 +15,7 @@ from cryo import __version__
 from cryo.daemon import state as state_mod
 from cryo.daemon.gamesense import GameDetector, GpuSense
 from cryo.hw.effects import Effects
+from cryo.hw.keyboard import Keyboard
 from cryo.hw.thermal import ThermalController, UnsupportedHardware
 
 log = logging.getLogger(__name__)
@@ -44,6 +45,7 @@ class Engine:
         self.state = state if state is not None else state_mod.load()
         self.thermal = ThermalController()
         self.effects = Effects()
+        self.keyboard = Keyboard()
         self.gpu = GpuSense()
         self.detector = GameDetector(config["auto"], config["poll_interval"])
         self.listeners: list[Callable[[dict], None]] = []
@@ -63,7 +65,11 @@ class Engine:
         # every telemetry frame so clients can render what exists.
         self.capabilities = {
             **self.thermal.capabilities(),
-            "lighting": self.effects.available(),
+            # Chassis lights (AW-ELC) and/or the per-key keyboard: the
+            # GUI shows the lighting panel when either exists.
+            "lighting": self.effects.available() or self.keyboard.available(),
+            "lighting_elc": self.effects.available(),
+            "lighting_keyboard": self.keyboard.available(),
             "game_detection": self.gpu.available(),
             # Lets cryoctl status show which code the running daemon is on
             # (the installer's update path restarts it).
@@ -132,20 +138,32 @@ class Engine:
 
     def restore_lighting(self) -> None:
         last = self.lighting_last()
-        try:
-            if not self.effects.available():
-                log.warning("ELC not available; skipping lighting restore")
-                return
-            self.effects.apply(last["effect"], int(last.get("color", "00D1FF"), 16))
-            self.effects.brightness(int(last.get("brightness", 60)))
-            log.info("Restored lighting: %s", last)
-        except Exception as exc:
-            log.warning("Lighting restore failed: %s", exc)
+        color = int(last.get("color", "00D1FF"), 16)
+        brightness = int(last.get("brightness", 60))
+        if not (self.effects.available() or self.keyboard.available()):
+            log.warning("no lighting device; skipping lighting restore")
+            return
+        self._drive_lighting(last["effect"], color, brightness)
+        log.info("Restored lighting: %s", last)
+
+    def _drive_lighting(self, effect: str, color: int, brightness: int | None) -> None:
+        """Push an effect to every lighting device present; one failing
+        (or missing) device never blocks the other."""
+        if self.effects.available():
+            try:
+                self.effects.apply(effect, color)
+                if brightness is not None:
+                    self.effects.brightness(brightness)
+            except Exception as exc:
+                log.warning("ELC lighting failed: %s", exc)
+        if self.keyboard.available():
+            try:
+                self.keyboard.apply(effect, color, brightness)
+            except Exception as exc:
+                log.warning("keyboard lighting failed: %s", exc)
 
     def set_lighting(self, effect: str, color: int, brightness: int | None = None) -> None:
-        self.effects.apply(effect, color)
-        if brightness is not None:
-            self.effects.brightness(brightness)
+        self._drive_lighting(effect, color, brightness)
         self.state["lighting"] = {
             "effect": effect,
             "color": f"{color:06X}",
@@ -158,7 +176,16 @@ class Engine:
         self.save_state()
 
     def set_brightness(self, value: int) -> None:
-        self.effects.brightness(value)
+        if self.effects.available():
+            try:
+                self.effects.brightness(value)
+            except Exception as exc:
+                log.warning("ELC brightness failed: %s", exc)
+        if self.keyboard.available():
+            try:
+                self.keyboard.brightness(value)
+            except Exception as exc:
+                log.warning("keyboard brightness failed: %s", exc)
         self.state["lighting"] = {**self.lighting_last(), "brightness": int(value)}
         self.save_state()
 
@@ -171,7 +198,8 @@ class Engine:
         """
         result: dict = {}
         self.effects.reset()
-        lighting_ok = self.effects.available()
+        self.keyboard.reset()
+        lighting_ok = self.effects.available() or self.keyboard.available()
         if lighting_ok:
             self.restore_lighting()
         result["lighting"] = lighting_ok

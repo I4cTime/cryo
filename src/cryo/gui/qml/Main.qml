@@ -523,9 +523,10 @@ ApplicationWindow {
         }
     }
 
-    // Stylized 4-zone laptop keyboard (left, center-left, center-right,
-    // right) previewing a lighting effect. Purely visual; the timings follow
-    // cryo/hw/effects.py so the preview moves like the real keyboard.
+    // Stylized laptop keyboard previewing a lighting effect across four
+    // zones. Purely visual; the timings follow cryo/hw/effects.py so the
+    // preview moves like the chassis lights (rings, lid, power button).
+    // The real keyboard shows the effect's base colour (keyboard.py).
     component KbdPreview: Item {
         id: kbd
         property string effect: "static"
@@ -542,6 +543,11 @@ ApplicationWindow {
         // effects.RAINBOW
         readonly property var rainbow: [[1, 0, 0], [1, 0.647, 0], [1, 1, 0], [0, 0.502, 0],
                                         [0, 0.749, 1], [0, 0, 1], [0.502, 0, 0.502]]
+        // One fixed size: the deck never stretches with the window (it is
+        // a picture of a keyboard, not a layout), so key proportions and
+        // the zone glow look the same at every window width. 372 is the
+        // panel's inner width at the window's minimumWidth.
+        implicitWidth: 372
         implicitHeight: deck.height
 
         function rgb(c) { return [c.r, c.g, c.b] }
@@ -654,7 +660,7 @@ ApplicationWindow {
 
         Rectangle {
             id: deck
-            width: parent.width
+            width: kbd.implicitWidth
             height: keyArea.height + 22 + palm.height
             radius: 12
             color: root.deck
@@ -1747,7 +1753,7 @@ ApplicationWindow {
 
                     KbdPreview {
                         objectName: "kbdPreview"
-                        Layout.fillWidth: true
+                        Layout.alignment: Qt.AlignHCenter
                         Layout.bottomMargin: 4
                         effect: daemon.lightEffect
                         zoneColor: lightColumn.currentColor
@@ -1826,7 +1832,13 @@ ApplicationWindow {
                                 MouseArea {
                                     anchors.fill: parent
                                     cursorShape: Qt.PointingHandCursor
-                                    onClicked: lightColumn.currentColor = parent.modelData
+                                    // apply straight away with the current
+                                    // effect; nobody expects to re-click the
+                                    // effect chip for a colour to take
+                                    onClicked: {
+                                        lightColumn.currentColor = parent.modelData
+                                        daemon.setLighting(daemon.lightEffect, parent.modelData)
+                                    }
                                 }
                             }
                         }
