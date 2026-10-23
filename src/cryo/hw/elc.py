@@ -19,6 +19,10 @@ PREAMBLE = 0x03
 # opcodes
 OP_REQUEST = 0x20
 OP_ANIMATION = 0x21
+# Power-state animations: the controller plays one of six slots (0x5b-0x60,
+# AC sleep/charged/charging, battery sleep/on/low) on top of the user
+# animation, blending where both address the same zone.
+OP_POWER_ANIMATION = 0x22
 OP_ZONE_SELECT = 0x23
 OP_ADD_ACTION = 0x24
 OP_SET_DIM = 0x26
@@ -31,6 +35,8 @@ ANIM_REMOVE = 0x0004
 ANIM_PLAY = 0x0005
 ANIM_SET_DEFAULT = 0x0006
 ANIM_SET_STARTUP = 0x0007
+
+POWER_SLOTS = (0x5B, 0x5C, 0x5D, 0x5E, 0x5F, 0x60)
 
 # actions
 ACTION_COLOR = 0x00
@@ -84,12 +90,12 @@ class Elc:
 
     # -- protocol ops ------------------------------------------------------
 
-    def animation(self, subcode: int, animation_id: int) -> None:
+    def animation(self, subcode: int, animation_id: int, op: int = OP_ANIMATION) -> None:
         self._send(
             bytes(
                 [
                     PREAMBLE,
-                    OP_ANIMATION,
+                    op,
                     (subcode >> 8) & 0xFF,
                     subcode & 0xFF,
                     (animation_id >> 8) & 0xFF,
