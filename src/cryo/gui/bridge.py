@@ -44,7 +44,7 @@ class Daemon(QObject):
         self._connected = False
         self._telemetry: dict = {}
         self._capabilities: dict = DEFAULT_CAPABILITIES
-        # Effective daemon config (curves, guard, cap) for the editors -
+        # Effective daemon config (curves, guard, cap) for the editors,
         # fetched once per connection and refreshed from every set_config
         # response, so the editor always shows what the daemon runs.
         self._config: dict = {}
@@ -61,7 +61,7 @@ class Daemon(QObject):
         self._stream.readyRead.connect(self._on_ready_read)
 
         # Command socket (serialized request/response). Responses are read
-        # so daemon-side failures surface in the UI instead of vanishing -
+        # so daemon-side failures surface in the UI instead of vanishing:
         # a kernel EINVAL on a profile write used to look like "the button
         # does nothing".
         self._cmd = QLocalSocket(self)

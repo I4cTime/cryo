@@ -144,7 +144,7 @@ def validate_patch(patch: dict) -> dict:
     """Check the keys Cryo's editors write; return a normalized copy.
 
     Keys this doesn't know about pass through untouched (the config file
-    is the user's), but anything the daemon actuates from must be sane -
+    is the user's), but anything the daemon actuates from must be sane:
     a curve with falling temperatures or a 5% CPU cap would otherwise be
     written to sysfs verbatim.
     """

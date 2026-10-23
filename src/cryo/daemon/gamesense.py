@@ -183,7 +183,7 @@ class GpuSense:
     ) -> list[tuple[str, int]] | None:
         """dGPU processes as (basename, vram_mb), largest VRAM first.
 
-        None if NVML is unavailable or every requested query failed -
+        None if NVML is unavailable or every requested query failed;
         callers treat that as "no signal", not "no processes".
         """
         raw = self._raw_processes(kinds)

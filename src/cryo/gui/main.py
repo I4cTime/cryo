@@ -143,7 +143,7 @@ def main() -> None:
     daemon.telemetryChanged.connect(update_tooltip)
     tray.show()
 
-    # Tear the QML engine down before the bridge object it references -
+    # Tear the QML engine down before the bridge object it references;
     # otherwise every `daemon.*` binding spams TypeError on quit.
     app.aboutToQuit.connect(engine.deleteLater)
 
