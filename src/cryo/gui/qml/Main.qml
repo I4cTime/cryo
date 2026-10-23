@@ -523,9 +523,10 @@ ApplicationWindow {
         }
     }
 
-    // Stylized 4-zone laptop keyboard (left, center-left, center-right,
-    // right) previewing a lighting effect. Purely visual; the timings follow
-    // cryo/hw/effects.py so the preview moves like the real keyboard.
+    // Stylized laptop keyboard previewing a lighting effect across four
+    // zones. Purely visual; the timings follow cryo/hw/effects.py so the
+    // preview moves like the chassis lights (rings, lid, power button).
+    // The real keyboard shows the effect's base colour (keyboard.py).
     component KbdPreview: Item {
         id: kbd
         property string effect: "static"

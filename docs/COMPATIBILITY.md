@@ -20,7 +20,8 @@ only what exists.
 | CPU Turbo toggle | `intel_pstate/no_turbo` or `cpufreq/boost` | Toggle hidden |
 | CPU power cap (per mode) | `intel_pstate/max_perf_pct` (Intel; amd_pstate has no global knob) | Cap card hidden, `cryoctl cap` reports it unavailable |
 | Game detection | NVIDIA proprietary driver (NVML) | Auto-G-Mode off; manual modes unaffected |
-| AlienFX lighting | AW-ELC USB controller `187c:0550/0551` (≈2020+ m/x-series keyboards) | Lighting section hidden |
+| AlienFX lighting (chassis: rings, lid logo, power button) | AW-ELC USB controller `187c:0550/0551` (≈2020+ m/x-series) | Lighting section hidden unless a keyboard backlight exists |
+| Keyboard backlight (solid colour + brightness) | Darfon per-key keyboard `0d62:aab1`/`bab1` ("DELL Technologies Keyboard", m16/m18 R1/R2) | Keyboard keeps its firmware lighting; chassis effects unaffected |
 
 Profile naming is translated per machine: on G-Mode models the kernel's
 `balanced-performance` is AWCC "Performance" and `performance` is
@@ -68,7 +69,11 @@ output — working or not, both results grow this table.
 ## Known out of scope (for now)
 
 - AMD dGPU game detection (needs DRM fdinfo instead of NVML)
-- Pre-ELC lighting controllers (older AlienFX protocols, per-key RGB)
+- Pre-ELC lighting controllers (older AlienFX protocols)
+- Animated or per-key patterns on the keyboard backlight (the keyboard
+  takes the effect's base colour; the chassis lights animate)
+- Keyboards wired to the ELC itself (some G-Series / m15 models use ELC
+  zones above 0x0f for the keyboard; those are not mapped yet)
 - Aurora/Area-51 desktops (thermals may work on models the driver
   covers; entirely untested). Pre-2012 desktops (e.g. Aurora R4, USB
   lighting id `187c:0513`) get no hwmon or profiles from alienware-wmi
