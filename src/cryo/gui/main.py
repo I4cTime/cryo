@@ -1,4 +1,4 @@
-"""cryo-gui — QML window + system tray."""
+"""cryo-gui - QML window + system tray."""
 
 from __future__ import annotations
 
@@ -70,7 +70,7 @@ def main() -> None:
     window = engine.rootObjects()[0]
 
     def show_window() -> None:
-        # Wayland: an existing surface can't raise itself — no activation
+        # Wayland: an existing surface can't raise itself - no activation
         # token flows through a tray click, so show()/raise_() on a buried
         # or minimized window silently does nothing (cosmic-comp declines).
         # Remap instead: hide+show maps a fresh toplevel, which the
@@ -83,7 +83,7 @@ def main() -> None:
 
     # -- tray --------------------------------------------------------------
 
-    # The 64px small-cut crystal (hexagon + spokes + core dot) — designed
+    # The 64px small-cut crystal (hexagon + spokes + core dot) - designed
     # to stay legible at tray size; falls back to the plain quantum dot.
     tray = QSystemTrayIcon(_brand_icon("cryo-64.png") or QIcon(_tray_pixmap()), app)
     menu = QMenu()
@@ -124,7 +124,7 @@ def main() -> None:
 
     tray.setContextMenu(menu)
     # Any non-context activation (left click, double click, middle click)
-    # shows the window — whether these ever arrive is up to the tray host;
+    # shows the window - whether these ever arrive is up to the tray host;
     # COSMIC's applet may only offer the context menu.
     tray.activated.connect(
         lambda reason: show_window()
@@ -134,7 +134,7 @@ def main() -> None:
 
     def update_tooltip() -> None:
         tray.setToolTip(
-            f"Cryo — {daemon.profile}\n"
+            f"Cryo - {daemon.profile}\n"
             f"CPU {daemon.cpuTemp:.0f}°C · GPU {daemon.gpuTemp:.0f}°C"
             + (f" · VRAM {daemon.vramUsed / 1024:.1f}G" if daemon.vramTotal else "")
             + (" · GAMING" if daemon.gaming else "")
@@ -143,7 +143,7 @@ def main() -> None:
     daemon.telemetryChanged.connect(update_tooltip)
     tray.show()
 
-    # Tear the QML engine down before the bridge object it references —
+    # Tear the QML engine down before the bridge object it references -
     # otherwise every `daemon.*` binding spams TypeError on quit.
     app.aboutToQuit.connect(engine.deleteLater)
 

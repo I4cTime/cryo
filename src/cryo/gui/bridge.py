@@ -44,7 +44,7 @@ class Daemon(QObject):
         self._connected = False
         self._telemetry: dict = {}
         self._capabilities: dict = DEFAULT_CAPABILITIES
-        # Effective daemon config (curves, guard, cap) for the editors —
+        # Effective daemon config (curves, guard, cap) for the editors -
         # fetched once per connection and refreshed from every set_config
         # response, so the editor always shows what the daemon runs.
         self._config: dict = {}
@@ -61,7 +61,7 @@ class Daemon(QObject):
         self._stream.readyRead.connect(self._on_ready_read)
 
         # Command socket (serialized request/response). Responses are read
-        # so daemon-side failures surface in the UI instead of vanishing —
+        # so daemon-side failures surface in the UI instead of vanishing -
         # a kernel EINVAL on a profile write used to look like "the button
         # does nothing".
         self._cmd = QLocalSocket(self)
@@ -114,7 +114,7 @@ class Daemon(QObject):
             self._vram_peak = max(
                 self._vram_peak, t["vram_used_mb"], t.get("vram_peak_mb") or 0
             )
-        # Capabilities are static per daemon run — emit separately and only
+        # Capabilities are static per daemon run - emit separately and only
         # on change, so the mode grid isn't rebuilt every tick.
         caps = t.get("capabilities") or DEFAULT_CAPABILITIES
         if caps != self._capabilities:
@@ -142,7 +142,7 @@ class Daemon(QObject):
         if self._cmd.state() != QLocalSocket.LocalSocketState.ConnectedState:
             self._cmd.connectToServer(str(paths.RUN_SOCKET))
             if not self._cmd.waitForConnected(300):
-                self.errorOccurred.emit("cryod unreachable — command dropped")
+                self.errorOccurred.emit("cryod unreachable - command dropped")
                 return
         self._cmd.write(json.dumps(payload).encode() + b"\n")
         self._cmd.flush()
@@ -155,7 +155,7 @@ class Daemon(QObject):
 
     @Property(str, notify=telemetryChanged)
     def profile(self) -> str:
-        return self._telemetry.get("profile") or "—"
+        return self._telemetry.get("profile") or "-"
 
     @Property(float, notify=telemetryChanged)
     def cpuTemp(self) -> float:

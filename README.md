@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="https://raw.githubusercontent.com/I4cTime/cryo/main/assets/brand/social-card.jpg" alt="Cryo — the Alienware command center for Linux" width="100%" />
+  <img src="https://raw.githubusercontent.com/I4cTime/cryo/main/assets/brand/social-card.jpg" alt="Cryo - the Alienware command center for Linux" width="100%" />
 </div>
 
 # Cryo
@@ -16,28 +16,28 @@
 
 The Alienware command center Dell never shipped for Linux, for Alienware
 and Dell G-Series machines on the mainline **alienware-wmi** kernel
-driver. A root daemon + QML GUI + CLI — no `acpi_call`, no out-of-tree
-modules — that does things stock AWCC (and the Windows original) don't:
+driver. A root daemon + QML GUI + CLI - no `acpi_call`, no out-of-tree
+modules - that does things stock AWCC (and the Windows original) don't:
 
-- **Custom fan curves** — temp→boost curves per fan group with hysteresis,
+- **Custom fan curves** - temp→boost curves per fan group with hysteresis,
   driven through the kernel's `custom` platform profile, editable in the
   GUI or with `cryoctl curve`.
-- **Thermal Guard** — an emergency failsafe in *any* profile: trip
+- **Thermal Guard** - an emergency failsafe in *any* profile: trip
   temperatures force 100% fans, hold, then restore your previous state.
   Thresholds are editable in the GUI or with `cryoctl guard`.
-- **CPU power cap** — a per-power-mode ceiling on the CPU's performance
+- **CPU power cap** - a per-power-mode ceiling on the CPU's performance
   state (`intel_pstate max_perf_pct`), re-applied on every mode switch and
   after resume. On the m18 R2, 90% ≈ 5.2 GHz single-core: about 12 W and
   9 °C off the in-game CPU peak while the GPU gets more headroom.
-- **Game detection** — sustained dGPU load (NVML) flips the machine into
+- **Game detection** - sustained dGPU load (NVML) flips the machine into
   G-Mode automatically, and restores your previous profile when you quit.
-- **Auto profiles** — battery → quiet, AC → balanced, all configurable,
+- **Auto profiles** - battery → quiet, AC → balanced, all configurable,
   fired on transitions only so manual picks stick.
-- **Live telemetry** — CPU/GPU temps, fan RPM, dGPU load, power draw and
+- **Live telemetry** - CPU/GPU temps, fan RPM, dGPU load, power draw and
   clocks, VRAM usage with session peak and a per-process breakdown,
-  sparkline history — in-window, in the tray tooltip, and streamable to
+  sparkline history - in-window, in the tray tooltip, and streamable to
   CSV with `cryoctl watch --log` for long debugging sessions.
-- **AlienFX lighting** — chassis effects on the rear rings, lid logo and
+- **AlienFX lighting** - chassis effects on the rear rings, lid logo and
   power button (AW-ELC protocol ported from AWCC), including a `quantum`
   cyan↔violet preset, plus the per-key keyboard backlight (a separate
   Darfon USB device on the m16/m18: colour, brightness and its firmware
@@ -46,15 +46,15 @@ modules — that does things stock AWCC (and the Windows original) don't:
 ## Will it work on my machine?
 
 Developed on an **Alienware m18 R2** (Pop!_OS); designed for the wider
-alienware-wmi ecosystem — the daemon probes what your machine supports at
+alienware-wmi ecosystem - the daemon probes what your machine supports at
 startup (profiles, G-Mode, fan boost, lighting, turbo control, NVML) and
 every client renders only what exists. Reported so far:
 
 | Model | Verdict |
 | ----- | ------- |
-| Alienware m18 R2 (Intel + RTX 4080) | SUPPORTED — everything works (maintainer) |
+| Alienware m18 R2 (Intel + RTX 4080) | SUPPORTED - everything works (maintainer) |
 | Alienware 16X Aurora AC16251 (Core Ultra 9 275HX + RTX 5060) | SUPPORTED - everything works ([#21](https://github.com/I4cTime/cryo/issues/21)) |
-| Alienware Aurora R4 (2011 desktop) | LIMITED — GPU telemetry, game detection, turbo and CPU cap only ([#9](https://github.com/I4cTime/cryo/issues/9)) |
+| Alienware Aurora R4 (2011 desktop) | LIMITED - GPU telemetry, game detection, turbo and CPU cap only ([#9](https://github.com/I4cTime/cryo/issues/9)) |
 
 No Dell G-Series report yet. See
 [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md) for the feature matrix.
@@ -108,7 +108,7 @@ sudo packaging/install.sh   # venv sync + /etc/cryo + systemd unit + icons + .de
 Requires: the `alienware-wmi` kernel driver (mainline; fan control needs
 its hwmon, which landed in Linux 6.16), Python 3.12+,
 [`uv`](https://docs.astral.sh/uv/getting-started/installation/) on your
-user's PATH, and — for game detection — the NVIDIA proprietary driver.
+user's PATH, and - for game detection - the NVIDIA proprietary driver.
 There is no distro package, Flatpak or PyPI release yet.
 
 To update, pull and re-run the installer; it restarts `cryod` on the new
@@ -133,7 +133,7 @@ cryo-gui
 ```
 
 Config lives at `/etc/cryo/config.json` (deep-merged over defaults in
-`cryo/daemon/config.py`) — fan curve points, guard thresholds, CPU caps per
+`cryo/daemon/config.py`) - fan curve points, guard thresholds, CPU caps per
 mode, auto-rule targets, game detection thresholds, socket group. The file
 holds only your overrides. The daemon rewrites it only when you change a
 setting from the GUI or `cryoctl curve/guard/cap` (every patch is
@@ -161,7 +161,7 @@ driver is missing, so starting before the driver loads is fine.
   startup probe finds it missing, curves and the Thermal Guard disable
   themselves visibly rather than failing silently.
 - On a machine the alienware-wmi driver only partly covers (no hwmon
-  and/or no platform profiles — typically pre-2012 desktops), `cryod`
+  and/or no platform profiles - typically pre-2012 desktops), `cryod`
   runs in **limited mode**: fans, curves, the guard and power modes are
   out, but GPU telemetry, game detection, the turbo toggle, the CPU cap
   and lighting still work where present, and every client hides the

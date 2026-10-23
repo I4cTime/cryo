@@ -1,4 +1,4 @@
-"""Darfon per-key keyboard (API V5) packets and sequencing — no hardware."""
+"""Darfon per-key keyboard (API V5) packets and sequencing - no hardware."""
 
 import pytest
 

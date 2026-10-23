@@ -29,7 +29,7 @@ class Server:
     def __init__(self, engine: Engine, overrides: dict | None = None) -> None:
         self.engine = engine
         # The user's partial config (what /etc/cryo/config.json holds). Only
-        # this is ever written back — never the merged config.
+        # this is ever written back - never the merged config.
         self.overrides: dict = overrides if overrides is not None else {}
         self.subscribers: set[asyncio.StreamWriter] = set()
         self._last_telemetry: dict = {}
@@ -68,7 +68,7 @@ class Server:
                 return {"ok": True, "profile": engine.toggle_gmode()}
             case "set_boost":
                 # Manual boost implies the user wants control: latch curves
-                # off in daemon state (persisted — otherwise a daemon restart
+                # off in daemon state (persisted - otherwise a daemon restart
                 # silently re-enables them and fights the manual setting).
                 # The user's config file is left alone; re-enabling curves
                 # through set_config clears the latch.
@@ -170,7 +170,7 @@ class Server:
             while True:
                 # A transient sysfs/NVML hiccup must not take the daemon
                 # down (a crash-restart cycle would drop guard/curve state
-                # mid-incident) — log it and keep ticking.
+                # mid-incident) - log it and keep ticking.
                 try:
                     telemetry = await asyncio.to_thread(self.engine.tick)
                 except Exception:

@@ -1,4 +1,4 @@
-"""Per-profile CPU performance cap (0.4.0) — engine logic with a stub
+"""Per-profile CPU performance cap (0.4.0) - engine logic with a stub
 thermal controller, no sysfs."""
 
 from types import SimpleNamespace

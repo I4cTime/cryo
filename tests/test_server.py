@@ -1,4 +1,4 @@
-"""Server request/broadcast behaviour with a stub engine — no sockets."""
+"""Server request/broadcast behaviour with a stub engine - no sockets."""
 
 from types import SimpleNamespace
 

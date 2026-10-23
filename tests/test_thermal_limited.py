@@ -1,5 +1,5 @@
 """Limited mode (0.4.0): a machine without the driver's hwmon and/or
-platform profiles still gets a ThermalController — missing parts are
+platform profiles still gets a ThermalController - missing parts are
 reported, not fatal. sysfs is faked by pointing paths at tmp_path."""
 
 from pathlib import Path

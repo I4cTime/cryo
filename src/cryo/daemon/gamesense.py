@@ -18,7 +18,7 @@ import logging
 
 log = logging.getLogger(__name__)
 
-# Exact (lowercased) process basenames — never substring patterns.
+# Exact (lowercased) process basenames - never substring patterns.
 DEFAULT_IGNORE = [
     "cosmic-comp",
     "steamwebhelper",
@@ -38,7 +38,7 @@ DEFAULT_IGNORE = [
 ]
 
 
-# Ticks between NVML init attempts while the driver is unavailable — cryod
+# Ticks between NVML init attempts while the driver is unavailable - cryod
 # often starts before the NVIDIA module on boot, and the driver can go away
 # and come back across suspend.
 NVML_RETRY_TICKS = 30
@@ -61,7 +61,7 @@ class GpuSense:
             pynvml.nvmlInit()
             handle = pynvml.nvmlDeviceGetHandleByIndex(0)
             name = pynvml.nvmlDeviceGetName(handle)
-        except Exception as exc:  # NVML missing/driver asleep — degrade gracefully
+        except Exception as exc:  # NVML missing/driver asleep - degrade gracefully
             self._nvml = None
             self._handle = None
             if not self._announced_missing:
@@ -183,7 +183,7 @@ class GpuSense:
     ) -> list[tuple[str, int]] | None:
         """dGPU processes as (basename, vram_mb), largest VRAM first.
 
-        None if NVML is unavailable or every requested query failed —
+        None if NVML is unavailable or every requested query failed -
         callers treat that as "no signal", not "no processes".
         """
         raw = self._raw_processes(kinds)
@@ -194,8 +194,8 @@ class GpuSense:
     def snapshot(self) -> tuple[list[tuple[str, int]], list[tuple[str, int]]] | None:
         """One NVML pass per tick: (all processes, graphics-only processes).
 
-        The engine needs both — the VRAM breakdown wants everything, game
-        detection wants graphics contexts only — and querying twice doubled
+        The engine needs both - the VRAM breakdown wants everything, game
+        detection wants graphics contexts only - and querying twice doubled
         the per-tick NVML and /proc work.
         """
         raw = self._raw_processes(("graphics", "compute"))

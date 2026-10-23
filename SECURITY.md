@@ -19,7 +19,7 @@ Report privately instead:
 
 ### 2. Email
 
-Send details to the maintainer directly — contact information is on the
+Send details to the maintainer directly - contact information is on the
 [@I4cTime GitHub profile](https://github.com/I4cTime).
 
 ## Scope
@@ -27,15 +27,15 @@ Send details to the maintainer directly — contact information is on the
 Cryo runs a **root daemon** (`cryod`) exposed over a group-owned Unix
 socket, so the interesting surface is:
 
-- **Privilege boundary** — anything that lets a user outside the socket
+- **Privilege boundary** - anything that lets a user outside the socket
   group drive the daemon, or lets socket clients execute code / write
   files as root beyond the intended sysfs and USB operations.
-- **Socket protocol** — malformed JSON-lines requests crashing the
+- **Socket protocol** - malformed JSON-lines requests crashing the
   daemon or corrupting state.
-- **Config handling** — `/etc/cryo/config.json` parsing, `set_config`
+- **Config handling** - `/etc/cryo/config.json` parsing, `set_config`
   patches escalating beyond configuration.
-- **Thermal safety** — bypassing or wedging the Thermal Guard failsafe.
-- **Installer** (`packaging/install.sh`) — anything it does as root.
+- **Thermal safety** - bypassing or wedging the Thermal Guard failsafe.
+- **Installer** (`packaging/install.sh`) - anything it does as root.
 
 ## Out of Scope
 

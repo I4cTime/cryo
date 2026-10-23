@@ -1,4 +1,4 @@
-"""Resume re-apply and cryoctl status rendering — stubs only, no hardware."""
+"""Resume re-apply and cryoctl status rendering - stubs only, no hardware."""
 
 from types import SimpleNamespace
 
