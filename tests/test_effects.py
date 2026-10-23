@@ -24,30 +24,67 @@ class FakeElc:
     set_dim = elc.Elc.set_dim
 
 
+def program(dev):
+    """Group packets per animation slot: {slot: [packets]}."""
+    slots, current = {}, None
+    for p in dev.sent:
+        if p[1] in (elc.OP_ANIMATION, elc.OP_POWER_ANIMATION) and p[2:4] == b"\x00\x01":
+            current = p[5]
+            slots[current] = []
+        elif current is not None and p[1] in (elc.OP_ZONE_SELECT, elc.OP_ADD_ACTION):
+            slots[current].append(p)
+    return slots
+
+
 def test_chassis_zones_are_rings_lid_button_without_poison_ids():
     assert fx.CHASSIS_ZONES == [0, 1, 2, 4]
     assert 3 not in fx.CHASSIS_ZONES and 5 not in fx.CHASSIS_ZONES
 
 
-def test_static_blanks_power_slots_then_programs_user_animation():
+def test_static_rings_lid_in_user_animation_button_in_active_slots():
     dev = FakeElc()
     fx.Effects(elc_factory=lambda: dev).static(0x00D1FF)
-    ops = [(p[1], p[2:4], p[4:6]) for p in dev.sent]
-    # six power slots, each: remove, start, zone select, action, save, default
-    power = [p for p in dev.sent if p[1] == elc.OP_POWER_ANIMATION]
-    assert len(power) == 6 * 4
-    assert power[0][2:6] == b"\x00\x04\x00\x5b"  # remove slot 0x5b
-    slot_zone = dev.sent[2]
-    assert slot_zone[1] == elc.OP_ZONE_SELECT and slot_zone[5] == 0x04  # only the button
-    assert dev.sent[3][7:10] == b"\x00\x00\x00"  # black
-    # then the user animation on every chassis zone, one select per zone
-    user = [p for p in dev.sent if p[1] == elc.OP_ANIMATION]
-    assert [p[2:6] for p in user] == [b"\x00\x04\x00\x61", b"\x00\x01\x00\x61", b"\x00\x02\x00\x61", b"\x00\x06\x00\x61"]
-    selects = [p[5] for p in dev.sent if p[1] == elc.OP_ZONE_SELECT]
-    assert selects == [4] * 6 + [0, 1, 2, 4]
-    colours = [p[7:10] for p in dev.sent if p[1] == elc.OP_ADD_ACTION]
-    assert colours[6:] == [b"\x00\xd1\xff"] * 4
+    slots = program(dev)
+    assert sorted(slots) == sorted([fx.ANIM_USER, *elc.POWER_SLOTS])
+    zones = lambda pkts: [p[5] for p in pkts if p[1] == elc.OP_ZONE_SELECT]
+    colours = lambda pkts: {p[7:10] for p in pkts if p[1] == elc.OP_ADD_ACTION}
+    assert zones(slots[fx.ANIM_USER]) == [0, 1, 2]  # never the button
+    assert colours(slots[fx.ANIM_USER]) == {b"\x00\xd1\xff"}
+    for slot in elc.POWER_SLOTS:
+        assert zones(slots[slot]) == [4]  # never the rings or lid
+        assert colours(slots[slot]) == ({b"\x00\xd1\xff"} if slot in fx.ACTIVE_SLOTS else {b"\x00\x00\x00"})
+    user_pkts = [p for p in dev.sent if p[1] == elc.OP_ANIMATION]
+    assert [p[2:6] for p in user_pkts] == [b"\x00\x04\x00\x61", b"\x00\x01\x00\x61", b"\x00\x02\x00\x61", b"\x00\x06\x00\x61"]
+    assert dev.sent[-1][1:6] == b"\x22\x00\x06\x00\x60"  # last: set default on 0x60
     assert not dev.claimed
+
+
+def test_quantum_morphs_every_zone():
+    dev = FakeElc()
+    fx.Effects(elc_factory=lambda: dev).quantum()
+    slots = program(dev)
+    user = [p for p in slots[fx.ANIM_USER] if p[1] == elc.OP_ADD_ACTION]
+    assert len(user) == 6  # 2 morph steps x 3 zones
+    assert user[0][2] == elc.ACTION_MORPH and user[0][7:10] == b"\x00\xd1\xff"
+    assert user[1][7:10] == b"\x7b\x2d\xff"
+    button = [p for p in slots[0x5F] if p[1] == elc.OP_ADD_ACTION]
+    assert [p[7:10] for p in button] == [b"\x00\xd1\xff", b"\x7b\x2d\xff"]
+
+
+def test_wave_steps_rings_lid_button_in_order():
+    dev = FakeElc()
+    fx.Effects(elc_factory=lambda: dev).wave(0xFF0000)
+    lit = []
+    for key in (fx.ANIM_USER, 0x5C):
+        zone = None
+        for p in program(dev)[key]:
+            if p[1] == elc.OP_ZONE_SELECT:
+                zone = p[5]
+            elif p[1] == elc.OP_ADD_ACTION:
+                lit.append((zone, p[7:10] == b"\xff\x00\x00"))
+    # zone i lit exactly at step i: rings, lid, then the button on step 4
+    assert [z for z, on in lit if on] == [0, 1, 2, 4]
+    assert [z for z, _ in lit].count(4) == 4  # the button has all four steps
 
 
 def test_brightness_dims_every_chassis_zone():

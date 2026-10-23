@@ -1832,7 +1832,13 @@ ApplicationWindow {
                                 MouseArea {
                                     anchors.fill: parent
                                     cursorShape: Qt.PointingHandCursor
-                                    onClicked: lightColumn.currentColor = parent.modelData
+                                    // apply straight away with the current
+                                    // effect; nobody expects to re-click the
+                                    // effect chip for a colour to take
+                                    onClicked: {
+                                        lightColumn.currentColor = parent.modelData
+                                        daemon.setLighting(daemon.lightEffect, parent.modelData)
+                                    }
                                 }
                             }
                         }

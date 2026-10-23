@@ -17,6 +17,15 @@ Packet layout (all REPORT_LEN bytes, zero padded, byte 0 = 0xCC):
   loop        cc 8c 13            commit the colour blocks
   update      cc 8b 01 ff         show them
   brightness  cc 83 38 9c BB      BB = 0..255, global
+  effect      cc 80 TT SS 00 00 01 01 01 NN r g b r g b
+                                  the keyboard's own effect engine: TT =
+                                  type, SS = tempo, NN = colour count - 1.
+                                  Verified on the m18 R2: 2 breathe, 3
+                                  wave and 8 pulse (one colour) and 0xa
+                                  night rider are smooth; 9 two-colour
+                                  pulse hard-switches; 4 two-colour wave
+                                  does nothing; 0xb laser wedges the keys
+                                  (never send it); 1 = back to colours.
 
 wire id = light index + 1. Sending exactly REPORT_LEN bytes matters: a
 65-byte packet lets a 16th block spill past the end and every 16th key
@@ -28,6 +37,7 @@ from __future__ import annotations
 import fcntl
 import logging
 import os
+import time
 from pathlib import Path
 
 log = logging.getLogger(__name__)
@@ -47,6 +57,15 @@ CMD_COLOR_SET = bytes([0x8C, 0x02, 0x00])
 CMD_LOOP = bytes([0x8C, 0x13])
 CMD_UPDATE = bytes([0x8B, 0x01, 0xFF])
 CMD_BRIGHTNESS = bytes([0x83, 0x38, 0x9C])
+CMD_EFFECT = bytes([0x80])
+EFFECT_TAIL = bytes([0x00, 0x00, 0x01, 0x01, 0x01])
+EFFECT_OFF = 0x01
+EFFECT_BREATHE = 0x02
+EFFECT_WAVE = 0x03
+EFFECT_PULSE = 0x08
+EFFECT_RIDER = 0x0A
+DEFAULT_TEMPO = 0x07
+STATUS_BUSY = 0x80
 
 HIDRAW_CLASS = Path("/sys/class/hidraw")
 
@@ -89,21 +108,48 @@ def brightness_packet(percent: int, length: int = DEFAULT_REPORT_LEN) -> bytes:
     return packet(CMD_BRIGHTNESS, bytes([round(percent * 255 / 100)]), length)
 
 
-def keyboard_color(effect: str, color: int) -> int:
-    """The solid colour the keyboard shows for a chassis effect.
+def effect_packet(kind: int, colors: list[int], tempo: int = DEFAULT_TEMPO,
+                  length: int = DEFAULT_REPORT_LEN) -> bytes:
+    """Engage one of the keyboard's built-in effects with one or two colours."""
+    if not 1 <= len(colors) <= 2:
+        raise ValueError("effects take one or two colours")
+    rgb = b"".join(bytes([(c >> 16) & 0xFF, (c >> 8) & 0xFF, c & 0xFF]) for c in colors)
+    return packet(CMD_EFFECT, bytes([kind & 0xFF, tempo & 0xFF]) + EFFECT_TAIL
+                  + bytes([len(colors) - 1]) + rgb, length)
 
-    The keyboard has no animation engine Cryo drives yet, so animated
-    effects fall back to their base colour; "quantum" is the brand cyan.
-    """
+
+def keyboard_plan(effect: str, color: int) -> tuple[int | None, list[int]]:
+    """(built-in effect type or None for a solid colour, colours) that
+    mirrors a chassis effect on the keyboard. The firmware has no smooth
+    two-colour mode, so quantum breathes in cyan and the rainbow effects
+    become a wave / pulse in the chosen colour."""
     from cryo.hw.effects import QUANTUM_CYAN
 
+    color &= 0xFFFFFF
     match effect:
         case "off":
-            return 0x000000
+            return None, [0x000000]
+        case "static":
+            return None, [color]
         case "quantum":
-            return QUANTUM_CYAN
+            return EFFECT_BREATHE, [QUANTUM_CYAN]
+        case "breathe":
+            return EFFECT_BREATHE, [color]
+        case "spectrum":
+            return EFFECT_WAVE, [color]
+        case "rainbow":
+            return EFFECT_PULSE, [color]
+        case "wave":
+            return EFFECT_WAVE, [color]
+        case "backforth":
+            return EFFECT_RIDER, [color]
         case _:
-            return color & 0xFFFFFF
+            return None, [color]
+
+
+def keyboard_color(effect: str, color: int) -> int:
+    """The solid colour the keyboard shows for a chassis effect."""
+    return keyboard_plan(effect, color)[1][0]
 
 
 # -- device discovery -------------------------------------------------------
@@ -253,9 +299,27 @@ class Keyboard:
         except OSError:
             pass  # status is informational; upstream never waits on it
 
+    def _wait_ready(self, dev: HidrawTransport, tries: int = 10) -> None:
+        """Poll status until the keyboard is no longer busy applying the
+        previous update. Sent straight after an update, the first colour
+        packet was dropped (the top row stayed dark)."""
+        for _ in range(tries):
+            dev.send(packet(CMD_STATUS, length=dev.length))
+            try:
+                if dev.recv()[2] != STATUS_BUSY:
+                    return
+            except OSError:
+                return
+            time.sleep(0.02)
+
     def set_colors(self, colors: dict[int, int]) -> None:
         def op() -> None:
             dev = self._device()
+            self._begin(dev)
+            # leave any built-in effect first, else the colours never show
+            dev.send(packet(CMD_EFFECT, bytes([EFFECT_OFF, 0xFE]), dev.length))
+            dev.send(packet(CMD_UPDATE, length=dev.length))
+            self._wait_ready(dev)
             self._begin(dev)
             for pkt in color_packets(colors, dev.length):
                 dev.send(pkt)
@@ -275,6 +339,15 @@ class Keyboard:
 
         self._retrying(op)
 
+    def effect(self, kind: int, colors: list[int], tempo: int = DEFAULT_TEMPO) -> None:
+        def op() -> None:
+            dev = self._device()
+            self._begin(dev)
+            dev.send(effect_packet(kind, colors, tempo, dev.length))
+            dev.send(packet(CMD_UPDATE, length=dev.length))
+
+        self._retrying(op)
+
     def off(self) -> None:
         self.set_color(0x000000)
 
@@ -282,4 +355,8 @@ class Keyboard:
         """Mirror a chassis lighting effect on the keyboard."""
         if brightness is not None:
             self.brightness(brightness)
-        self.set_color(keyboard_color(effect, color))
+        kind, colors = keyboard_plan(effect, color)
+        if kind is None:
+            self.set_color(colors[0])
+        else:
+            self.effect(kind, colors)

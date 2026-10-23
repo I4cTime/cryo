@@ -40,8 +40,8 @@ modules — that does things stock AWCC (and the Windows original) don't:
 - **AlienFX lighting** — chassis effects on the rear rings, lid logo and
   power button (AW-ELC protocol ported from AWCC), including a `quantum`
   cyan↔violet preset, plus the per-key keyboard backlight (a separate
-  Darfon USB device on the m16/m18, solid colour + brightness), all
-  restored on boot.
+  Darfon USB device on the m16/m18: colour, brightness and its firmware
+  breathe / wave / pulse / night-rider effects), all restored on boot.
 
 ## Will it work on my machine?
 
