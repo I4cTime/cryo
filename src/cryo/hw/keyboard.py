@@ -19,12 +19,13 @@ Packet layout (all REPORT_LEN bytes, zero padded, byte 0 = 0xCC):
   brightness  cc 83 38 9c BB      BB = 0..255, global
   effect      cc 80 TT SS 00 00 01 01 01 NN r g b r g b
                                   the keyboard's own effect engine: TT =
-                                  type (2 breathe, 3 wave, 4 two-colour
-                                  wave, 8 pulse, 9 two-colour pulse, 0xa
-                                  night rider, 0xb laser; 1 = back to
-                                  plain colours), SS = tempo, NN = colour
-                                  count - 1 (alienfx-tools' comments;
-                                  tempo scale not documented)
+                                  type, SS = tempo, NN = colour count - 1.
+                                  Verified on the m18 R2: 2 breathe, 3
+                                  wave and 8 pulse (one colour) and 0xa
+                                  night rider are smooth; 9 two-colour
+                                  pulse hard-switches; 4 two-colour wave
+                                  does nothing; 0xb laser wedges the keys
+                                  (never send it); 1 = back to colours.
 
 wire id = light index + 1. Sending exactly REPORT_LEN bytes matters: a
 65-byte packet lets a 16th block spill past the end and every 16th key
@@ -36,6 +37,7 @@ from __future__ import annotations
 import fcntl
 import logging
 import os
+import time
 from pathlib import Path
 
 log = logging.getLogger(__name__)
@@ -60,11 +62,10 @@ EFFECT_TAIL = bytes([0x00, 0x00, 0x01, 0x01, 0x01])
 EFFECT_OFF = 0x01
 EFFECT_BREATHE = 0x02
 EFFECT_WAVE = 0x03
-EFFECT_WAVE2 = 0x04
 EFFECT_PULSE = 0x08
-EFFECT_PULSE2 = 0x09
 EFFECT_RIDER = 0x0A
 DEFAULT_TEMPO = 0x07
+STATUS_BUSY = 0x80
 
 HIDRAW_CLASS = Path("/sys/class/hidraw")
 
@@ -119,8 +120,10 @@ def effect_packet(kind: int, colors: list[int], tempo: int = DEFAULT_TEMPO,
 
 def keyboard_plan(effect: str, color: int) -> tuple[int | None, list[int]]:
     """(built-in effect type or None for a solid colour, colours) that
-    mirrors a chassis effect on the keyboard."""
-    from cryo.hw.effects import QUANTUM_CYAN, QUANTUM_VIOLET
+    mirrors a chassis effect on the keyboard. The firmware has no smooth
+    two-colour mode, so quantum breathes in cyan and the rainbow effects
+    become a wave / pulse in the chosen colour."""
+    from cryo.hw.effects import QUANTUM_CYAN
 
     color &= 0xFFFFFF
     match effect:
@@ -129,13 +132,13 @@ def keyboard_plan(effect: str, color: int) -> tuple[int | None, list[int]]:
         case "static":
             return None, [color]
         case "quantum":
-            return EFFECT_PULSE2, [QUANTUM_CYAN, QUANTUM_VIOLET]
+            return EFFECT_BREATHE, [QUANTUM_CYAN]
         case "breathe":
             return EFFECT_BREATHE, [color]
         case "spectrum":
-            return EFFECT_WAVE2, [0xFF0000, 0x0000FF]
+            return EFFECT_WAVE, [color]
         case "rainbow":
-            return EFFECT_WAVE2, [color, 0xFFFFFF ^ color]
+            return EFFECT_PULSE, [color]
         case "wave":
             return EFFECT_WAVE, [color]
         case "backforth":
@@ -296,6 +299,19 @@ class Keyboard:
         except OSError:
             pass  # status is informational; upstream never waits on it
 
+    def _wait_ready(self, dev: HidrawTransport, tries: int = 10) -> None:
+        """Poll status until the keyboard is no longer busy applying the
+        previous update. Sent straight after an update, the first colour
+        packet was dropped (the top row stayed dark)."""
+        for _ in range(tries):
+            dev.send(packet(CMD_STATUS, length=dev.length))
+            try:
+                if dev.recv()[2] != STATUS_BUSY:
+                    return
+            except OSError:
+                return
+            time.sleep(0.02)
+
     def set_colors(self, colors: dict[int, int]) -> None:
         def op() -> None:
             dev = self._device()
@@ -303,6 +319,7 @@ class Keyboard:
             # leave any built-in effect first, else the colours never show
             dev.send(packet(CMD_EFFECT, bytes([EFFECT_OFF, 0xFE]), dev.length))
             dev.send(packet(CMD_UPDATE, length=dev.length))
+            self._wait_ready(dev)
             self._begin(dev)
             for pkt in color_packets(colors, dev.length):
                 dev.send(pkt)

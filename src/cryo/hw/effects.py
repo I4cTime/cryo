@@ -8,15 +8,18 @@ firmware drop the whole animation. The per-key keyboard is a separate USB
 device, see keyboard.py. Multi-zone effects (wave, bounce) step across
 rings, lid, button in that order.
 
-Effects are written into the controller's power-state animation slots
-(opcode 0x22; AC charged/charging and battery on/low get the effect, the
-two sleep slots go dark) rather than the post-boot user animation 0x61.
-The controller layers both families and blends them per zone, and the
-power-state layer keeps re-asserting on the power button, which left the
-button flickering and then dark when only the user animation drove it.
-One family for everything means no blending, the button animates like
-the rings, lights go off in sleep, and the effect survives a reboot
-because the slots are persistent (AWCC on Windows reprograms them).
+Two animation families share the controller and blend per zone: the
+post-boot user animation (0x21, id 0x61) and six power-state slots
+(0x22, AC sleep/charged/charging, battery sleep/on/low). Probed on the
+m18 R2 (2026-10-22): the user animation is smooth on the rings and lid
+but the power-state layer re-asserts on the power button, so the button
+flickered and went dark when the user animation drove it; a slot that
+mentions the rings or lid dims and flickers the user animation on them;
+a single slot goes blank on the other power source. So the rings and
+lid run the effect in the user animation, and the power button alone
+runs the same effect in all four active slots (dark in the two sleep
+slots), which plays smoothly on AC and on battery and goes off in sleep.
+The slots are persistent (AWCC on Windows reprograms them).
 
 Effect recipes ported from tr1xem/AWCC's EffectController (GPL-3.0), plus
 Cryo-specific "quantum" presets using the I4C palette.
@@ -38,10 +41,13 @@ T = TypeVar("T")
 # Chassis light ids on 0551 laptops: exhaust rings, lid logo, power button.
 CHASSIS_ZONES = [0x00, 0x01, 0x02, 0x04]
 
-# Power-state slots that show the effect; the rest (AC sleep 0x5b, battery
-# sleep 0x5e) are written dark.
+# Zones driven through the power-state slots instead of the user animation.
+POWER_ZONES = [0x04]
+# Slots that show the effect; the rest (AC sleep 0x5b, battery sleep 0x5e)
+# are written dark.
 ACTIVE_SLOTS = (0x5C, 0x5D, 0x5F, 0x60)
-# The post-boot user animation; retired so it never blends with the slots.
+# The post-boot user animation (same slot upstream uses, so Cryo and stock
+# awcc overwrite each other cleanly instead of stacking).
 ANIM_USER = 0x0061
 
 # I4C quantum palette (lib/palette.ts equivalents)
@@ -98,24 +104,31 @@ class Effects:
 
     # -- programming --------------------------------------------------------
 
+    @staticmethod
+    def _program_slot(dev: _elc.Elc, op: int, slot: int, program: Program) -> None:
+        dev.animation(_elc.ANIM_REMOVE, slot, op)
+        dev.animation(_elc.ANIM_CONFIG_START, slot, op)
+        for zone, actions in program:
+            dev.zone_select(1, [zone])
+            for action, duration, tempo, rgb in actions:
+                dev.add_action(action, duration, tempo, rgb)
+        dev.animation(_elc.ANIM_CONFIG_SAVE, slot, op)
+        dev.animation(_elc.ANIM_SET_DEFAULT, slot, op)
+
     def _write(self, program: Program) -> None:
-        """Write a program into every power-state slot (dark in the sleep
-        slots) and retire the user animation."""
-        dark: Program = [(zone, [(_elc.ACTION_COLOR, 0xFFFF, 1, 0x000000)]) for zone in self.zones]
+        """Rings/lid into the user animation; the power button into the
+        active power-state slots (dark in the sleep slots)."""
+        user = [(z, a) for z, a in program if z not in POWER_ZONES]
+        button = [(z, a) for z, a in program if z in POWER_ZONES]
+        dark: Program = [(z, [(_elc.ACTION_COLOR, 0xFFFF, 1, 0x000000)]) for z, _ in button]
         dev = self._device()
         dev.acquire()
         try:
-            dev.animation(_elc.ANIM_REMOVE, ANIM_USER)
-            for slot in _elc.POWER_SLOTS:
-                op = _elc.OP_POWER_ANIMATION
-                dev.animation(_elc.ANIM_REMOVE, slot, op)
-                dev.animation(_elc.ANIM_CONFIG_START, slot, op)
-                for zone, actions in program if slot in ACTIVE_SLOTS else dark:
-                    dev.zone_select(1, [zone])
-                    for action, duration, tempo, rgb in actions:
-                        dev.add_action(action, duration, tempo, rgb)
-                dev.animation(_elc.ANIM_CONFIG_SAVE, slot, op)
-                dev.animation(_elc.ANIM_SET_DEFAULT, slot, op)
+            self._program_slot(dev, _elc.OP_ANIMATION, ANIM_USER, user)
+            if button:
+                for slot in _elc.POWER_SLOTS:
+                    self._program_slot(dev, _elc.OP_POWER_ANIMATION, slot,
+                                       button if slot in ACTIVE_SLOTS else dark)
         finally:
             dev.release()
 
