@@ -32,11 +32,24 @@ builds this mapping from the kernel's advertised choices at startup.
 | Model | Verdict | Thermals | Curves/Guard | G-Mode | Lighting | Game sense | Reported by |
 |---|---|---|---|---|---|---|---|
 | Alienware m18 R2 (Intel + RTX 4080) | SUPPORTED | ✅ | ✅ | ✅ | ✅ | ✅ | maintainer |
+| Alienware 16X Aurora AC16251 (Core Ultra 9 275HX + RTX 5060 Laptop) | SUPPORTED | ✅ | ✅ | ✅ | ✅ | ✅ | [#21](https://github.com/I4cTime/cryo/issues/21) |
 | Alienware Aurora R4 (2011 desktop, RTX 5060 Ti) | LIMITED | ❌ | ❌ | ❌ | ❌ | ✅ | [#9](https://github.com/I4cTime/cryo/issues/9) |
 
 The Aurora R4 loads alienware-wmi but gets no hwmon or platform profiles
 from it, and its `187c:0513` lighting controller predates AW-ELC. GPU
 telemetry, game detection, turbo and the CPU cap work in limited mode.
+
+The 16X Aurora (2026, Arrow Lake-HX) is the first community SUPPORTED
+report, on kernel 7.2 (CachyOS): all six platform profiles, both fan
+boost files, the AW-ELC `187c:0551` controller and NVML, with the
+Thermal Guard, curves, turbo toggle and CPU cap all verified. G-Mode was
+switched but not yet stress-tested in a game. One data point from that
+report: without Cryo the stock EC fan response trailed a sudden all-core
+spike by 15-20 s with the package already past 90 °C; with the Guard
+(default `cpu_trip=88`) the fans were ramping within the first 1 s poll.
+An instant synthetic spike can still touch Tjmax for a few seconds before
+the fans physically catch up - that is fan spin-up time, not something
+software can outrun; the Guard's win is on sustained loads.
 
 **Have a different Alienware or Dell G-Series machine?** Run:
 
