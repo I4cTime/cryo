@@ -170,12 +170,53 @@ def test_settings_page_loads_and_escape_goes_back(ui):
     assert ui.messages == []
 
 
-def test_back_button_returns_home_with_a_tap(ui):
+def test_close_button_returns_home_with_a_tap(ui):
     ui.prefs.setProperty("soundEnabled", True)
     open_settings(ui)
-    click(ui, find(ui, "settingsBack"))
+    click(ui, find(ui, "settingsClose"))
     assert ui.window.property("page") == "home"
     assert ui.played == ["tap"]
+
+
+def _scene_rect(item):
+    r = item.mapRectToScene(item.boundingRect())
+    return (r.x(), r.y(), r.width(), r.height())
+
+
+def test_close_sits_where_the_gear_is(ui):
+    # Settings opens and closes in the same spot: the pointer never moves.
+    gear = _scene_rect(find(ui, "settingsButton"))
+    mark_x = _scene_rect(find(ui, "livingMark"))[0]
+    open_settings(ui)
+    assert _scene_rect(find(ui, "settingsClose")) == pytest.approx(gear)
+    header = find(ui, "settingsHeader")
+    assert _scene_rect(header)[0] == pytest.approx(mark_x)      # title at the mark's margin
+    stack, back = [ui.window.contentItem()], None
+    while stack:
+        item = stack.pop()
+        back = back or (item if item.objectName() == "settingsBack" else None)
+        stack.extend(item.childItems())
+    assert back is None
+
+
+def test_frost_keeps_clear_of_the_header_controls(ui):
+    def clear():
+        r = ui.window.property("frostClear")
+        return (r.x(), r.y(), r.width(), r.height())
+
+    def inside(inner, outer):
+        return (inner[0] >= outer[0] - 0.5 and inner[1] >= outer[1] - 0.5
+                and inner[0] + inner[2] <= outer[0] + outer[2] + 0.5
+                and inner[1] + inner[3] <= outer[1] + outer[3] + 0.5)
+
+    gear = _scene_rect(find(ui, "settingsButton"))
+    assert inside(gear, clear())
+    ui.daemon.set_state(guard=True)                     # the badge joins the clear patch
+    spin(30)
+    assert clear()[2] > gear[2] * 3
+    open_settings(ui)
+    assert clear() == pytest.approx(_scene_rect(find(ui, "settingsClose")))
+    assert ui.messages == []
 
 
 def test_page_switch_crossfades_only_with_motion(ui):
@@ -241,7 +282,7 @@ def test_sound_controls_follow_enable_and_availability(ui):
     assert unavailable.property("visible") is False
     click(ui, find(ui, "soundSwitch"))
     assert ui.prefs.property("soundEnabled") is True
-    assert ui.played == []            # the switch's cue comes before sound is on
+    assert ui.played == ["toggle_on"]   # cued after sound is on, so it is heard
     assert picker.property("enabled") is True
     assert ui.sfx.property("state") == "off"                          # dry run: nothing built
     click(ui, find(ui, "segment_glass"))
@@ -256,7 +297,7 @@ def test_sound_controls_follow_enable_and_availability(ui):
     ui.sfx.setProperty("_state", "off")
     spin(70)
     click(ui, find(ui, "soundSwitch"))   # turning it off still plays, then stops
-    assert ui.played == ["tap", "toggle_off"]
+    assert ui.played == ["toggle_on", "tap", "toggle_off"]
     assert ui.prefs.property("soundEnabled") is False
     assert ui.messages == []
 
@@ -365,3 +406,44 @@ def test_choices_persist_to_the_settings_file(ui):
         elif isinstance(value, float):
             raw = float(raw)
         assert raw == value, key
+
+
+def _laid_out_lines(text: str, font, width: float) -> list[str]:
+    from PySide6.QtGui import QTextLayout, QTextOption
+
+    layout = QTextLayout(text, font)
+    option = QTextOption()
+    option.setWrapMode(QTextOption.WrapMode.WordWrap)
+    layout.setTextOption(option)
+    layout.beginLayout()
+    out = []
+    while True:
+        line = layout.createLine()
+        if not line.isValid():
+            break
+        line.setLineWidth(width)
+        out.append(text[line.textStart():line.textStart() + line.textLength()])
+    layout.endLayout()
+    return out
+
+
+@pytest.mark.parametrize("width", [480, 440])
+def test_settings_copy_has_no_one_word_last_line(ui, width):
+    """Copy that wraps must not leave a single word on its last line at the
+    default (480) or minimum (440) window width. Frost's live line is
+    excluded (it changes with state)."""
+    ui.window.setWidth(width)
+    open_settings(ui)
+    stack, widows = [find(ui, "settingsScroller")], []
+    while stack:
+        item = stack.pop()
+        stack.extend(item.childItems())
+        if not item.inherits("QQuickText") or not item.isVisible():
+            continue
+        if item.objectName() == "frostSampleText" or (item.property("lineCount") or 0) < 2:
+            continue
+        lines = _laid_out_lines(item.property("text"), item.property("font"), item.width())
+        assert len(lines) == item.property("lineCount"), lines
+        if len(lines[-1].split()) < 2:
+            widows.append(lines)
+    assert widows == []

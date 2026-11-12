@@ -67,7 +67,7 @@ QtObject {
     // The glint: copies of the title's letters in frost ink, seen through
     // three nested moving windows (wide and faint to narrow and bright), so
     // the letters light up as it passes without a band over the background.
-    readonly property color glintInk: Theme.isLight ? Theme.accent : Theme.frostRim
+    readonly property color glintInk: Theme.frostInk
     readonly property Item glint: Item {
         parent: c.title
         visible: c.title !== null && c.sweep > 0 && c.sweep < 1

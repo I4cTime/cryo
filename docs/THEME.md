@@ -12,7 +12,7 @@ window live.
 |---|---|---|
 | `Prefs` | `Cryo/Prefs.qml` | User choices, persisted with QtCore `Settings` (QSettings: organization `i4c`, application `Cryo`; demo mode is `Cryo-demo`). Keys: `style`, `accent`, `effects`, `reduceMotion`, `soundEnabled`, `soundSet`, `soundVolume`, `frostLine`. |
 | `Theme` | `Cryo/Theme.qml` | The styles (data) and the tokens (properties reading the active style), fonts, the power-mode maps and helpers. |
-| `Ambient` | `Cryo/Ambient.qml` | Runtime state: `live`, `motion`, `connected`, `heat`, `dormant`, `guard`, `guardPhase`, `frostAmount`. |
+| `Ambient` | `Cryo/Ambient.qml` | Runtime state: `live`, `motion`, `connected`, `stale`, `heat`, `dormant`, `guard`, `guardPhase`, `frostAmount`. |
 
 ## Styles
 
@@ -53,6 +53,7 @@ style.
 | `accent2Text` | `accent2` tuned for text and thin lines on `panel`. |
 | `knob` | Slider handle fill. |
 | `frost`, `frostRim` | Frost overlay ice tint and the bright rim at the freeze front. |
+| `frostInk` | Frost drawn as a mark on the window: the frost bloom crystal, the guard's ice motes on the brand mark, the reveal glint on section titles, the ice sheen and inner rim of panels. Stays visible on the style's `panel` and `bg` (3:1 or more): pale on dark styles, a deeper ice blue on glacier. |
 | `frostShade`, `frostShadeStrength` | Darkening under and inside the ice, for pale styles (0 on dark styles). |
 | `frostIntensity` | Maximum frost alpha. |
 | `hot`, `warn`, `ok` | Status: too hot / error, warning, healthy. |
@@ -133,13 +134,30 @@ Contrast: in every style `fg`, `muted`, `accent`, `accent2Text`, `hot` and
   (1 Hz) and only eases (400 ms) on a jump over 0.15, so it never repaints
   continuously. Dormant (no daemon or no thermals): neutral heat 0.4.
 - `Ambient.frostAmount` drives the `FrostOverlay` in `Main.qml`: idle frost is
-  `idleMax * clamp(1 - heat / 0.6, 0, 1)` with `idleMax` 0.38; Thermal Guard
+  `idleMax * clamp(1 - heat / 0.6, 0, 1)` with `idleMax` 0.40; Thermal Guard
   sweeps to `peakAmount` 0.95 in 550 ms (`guardPhase` "sweep"), settles to
-  `heldAmount` 0.48 ("held"), and thaws back over 2.5 s on release ("thaw").
-  With `Prefs.effects` off it is 0. Under reduce motion (or with the window
-  unfocused) there is no sweep: the amount jumps and the overlay crossfades
-  for 280 ms. The overlay extends past the window edge (`frostBleed`), so the
-  corner ferns start outside the pane and idle frost frames the content.
+  `heldAmount` 0.44 ("held"), and thaws back over 2.5 s on release ("thaw").
+  Dormant (daemon unreachable or no thermals) it eases to a fixed
+  `dormantFrost` 0.34. With `Prefs.effects` off it is 0. Under reduce motion
+  (or with the window unfocused) there is no sweep: the amount jumps and the
+  overlay crossfades for 280 ms.
+- The overlay is larger than the window, so the ferns that freeze first
+  start outside the pane: 56 px past the sides and the top
+  (`frostBleed`, `frostBleedTop`) and 140 px past the bottom
+  (`frostBleedBottom`). At idle that leaves rich top corners and only a thin
+  fringe along the bottom, with nothing in the bottom 30 px of content
+  covered; held, every label stays readable. The amounts are tied to this
+  placement: changing the overflow changes how much of each amount shows.
+- The frost keeps clear of the header controls (badges, connection dot, the
+  gear; on Settings the close button): `Main.qml` passes their rect as the
+  overlay's `clearRect` and the shader fades the ice out around it over
+  `clearFeather` (18 px). The software fallback (a static frost image) has
+  no clear patch.
+- Stale telemetry: when cryod is unreachable (`Ambient.stale`) the figures
+  on screen are the last reading. The temperature tiles, the dGPU load row
+  and the VRAM panel dim to `Ambient.staleOpacity` (0.45), their arcs, lines
+  and numbers turn `muted`, and the fan glyphs stop. They stay on screen;
+  controls are unchanged.
 - `Backdrop.qml` blends the washes by heat, runs them cold while the guard
   holds, fades them to `washNeutral` when dormant, and leans them icier on
   the Cool profile and toward `accent2` on Performance and G-Mode.

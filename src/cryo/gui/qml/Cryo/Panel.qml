@@ -67,8 +67,7 @@ Rectangle {
     // The facet plane: one flat, slightly brighter (on light styles slightly
     // shaded) band through the ice, sharp on its leading edge and fading on
     // the trailing one, filled inside the exact rounded outline.
-    readonly property color sheenInk: Theme.isLight ? Qt.alpha(Theme.frostShade, 0.045)
-                                                    : Qt.alpha(Theme.frost, 0.028)
+    readonly property color sheenInk: Qt.alpha(Theme.frostInk, Theme.isLight ? 0.045 : 0.028)
     Shape {
         anchors.fill: parent
         anchors.margins: 1
@@ -103,7 +102,7 @@ Rectangle {
         radius: panelRect.radius - 1
         color: "transparent"
         border.width: 1
-        border.color: Theme.isLight ? Qt.alpha(Theme.frostShade, 0.06) : Qt.alpha(Theme.frost, 0.035)
+        border.color: Qt.alpha(Theme.frostInk, Theme.isLight ? 0.06 : 0.035)
     }
 
     // Facet highlight: light caught by the top edge, brightest left of

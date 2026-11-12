@@ -220,7 +220,7 @@ def test_dormant_frost_holds_a_light_fixed_value(gui, live):
     assert 0.0 < mid < amb.property("dormantFrost")     # eases in
     spin(800)
     assert amb.property("frostAmount") == pytest.approx(amb.property("dormantFrost"))
-    assert amb.property("dormantFrost") == pytest.approx(0.22)
+    assert amb.property("dormantFrost") == pytest.approx(0.34)
     d.set_state(connected=True, cpu_temp=40.0, gpu_temp=38.0)
     spin(800)
     assert amb.property("frostAmount") == pytest.approx(amb.property("idleMax"))
@@ -238,6 +238,57 @@ def test_dormant_frost_jumps_under_reduce_motion(gui, live):
     gui.daemon.set_state(connected=False)
     spin(5)
     assert live.property("frostAmount") == pytest.approx(live.property("dormantFrost"))
+
+
+def test_stale_telemetry_dims_when_cryod_is_unreachable(gui, live):
+    """Capability honesty: with cryod gone the figures on screen are the last
+    reading. They stay shown, but dim, go muted and the fans stop."""
+    theme = gui.singleton("Theme")
+    d = gui.daemon
+    d.set_state(cpu_temp=60.0, gpu_temp=55.0, fan_rpm=3000, gpu_util=50)
+    spin(50)
+    cpu = _find(gui, "cpuTile")
+    fan = cpu.findChild(QObject, "cpuFanSpin")
+    assert cpu.property("stale") is False
+    assert cpu.property("inkOpacity") == pytest.approx(1.0)
+    assert fan.property("running") is True
+    assert _find(gui, "cpuTempRoll").property("color") == theme.property("fg")
+
+    d.set_state(connected=False)
+    spin(50)
+    for name in ("cpuTile", "gpuTile"):
+        tile = _find(gui, name)
+        assert tile.property("visible") is True                      # not hidden
+        assert tile.property("stale") is True
+        assert tile.property("inkOpacity") == pytest.approx(0.45)
+        assert tile.property("arcColor") == theme.property("muted")
+    assert fan.property("running") is False
+    roll = _find(gui, "cpuTempRoll")
+    assert roll.property("text") == "60"                             # the last reading
+    assert roll.property("color") == theme.property("muted")
+    assert _find(gui, "cpuRpmRoll").property("color") == theme.property("muted")
+    assert _find(gui, "gpuLoadRow").property("opacity") == pytest.approx(0.45)
+    assert _find(gui, "vramPanel").property("inkOpacity") == pytest.approx(0.45)
+    # controls are not telemetry: they stay as they are
+    assert _find(gui, "secFans").property("opacity") == pytest.approx(1.0)
+    assert _find(gui, "mode-cool").property("opacity") == pytest.approx(1.0)
+
+    d.set_state(connected=True, cpu_temp=61.0)
+    spin(50)
+    assert cpu.property("stale") is False
+    assert cpu.property("arcColor") != theme.property("muted")
+    assert fan.property("running") is True
+    assert gui.messages == []
+
+
+def test_mark_draws_without_effects_on_the_software_renderer(gui):
+    # Offscreen tests run on the software renderer, which draws no
+    # MultiEffect: the mark (and the gauge arcs) must show as plain items.
+    spin(50)
+    mark = _find(gui, "livingMark")
+    if mark.property("effectsDrawn"):
+        pytest.skip("not on the software renderer")
+    assert _find(gui, "markPlain").isVisible()
 
 
 def test_mark_orbits_awake_and_sleeps_dormant(gui, live):

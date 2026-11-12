@@ -17,6 +17,11 @@ Item {
     property real feather: 0.025
     property color shade: "#4A6478"
     property real shadeStrength: 0
+    // A rect in this item's coordinates the frost keeps clear of (the
+    // header controls), and how far the frost takes to return around it.
+    // An empty rect clears nothing. Shader path only.
+    property rect clearRect: Qt.rect(0, 0, 0, 0)
+    property real clearFeather: 18
 
     // False on the software renderer, where ShaderEffect cannot run and a
     // pre-baked frost image (fixed shape, fading with amount) stands in.
@@ -49,6 +54,12 @@ Item {
         readonly property color tint: root.tint
         readonly property color rimColor: root.rimColor
         readonly property color shade: root.shade
+        readonly property var clearRect: root.clearRect.width > 0 && root.clearRect.height > 0
+            ? Qt.vector4d(root.clearRect.x, root.clearRect.y,
+                          root.clearRect.x + root.clearRect.width, root.clearRect.y + root.clearRect.height)
+            : Qt.vector4d(-1e5, -1e5, -1e5, -1e5)
+        readonly property size size: Qt.size(width, height)
+        readonly property real clearFeather: root.clearFeather
 
         fragmentShader: Qt.resolvedUrl("frost.frag.qsb")
     }

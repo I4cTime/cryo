@@ -67,6 +67,38 @@ def test_names_and_gap(cues):
     assert cues.played == ["tap", "toggle_on", "tap"]
 
 
+def test_a_cue_waits_for_the_bank_to_load(cues):
+    """The switch that turns sound on cues "toggle_on" while the bank is
+    still loading: the cue is held and plays once the bank is ready."""
+    from PySide6.QtCore import QUrl
+    from PySide6.QtQml import QQmlComponent
+
+    component = QQmlComponent(cues.engine)
+    component.setData(b"import QtQuick\nQtObject { property bool ready: false; "
+                      b"property string failed: \"\"; property var plays: []; signal updated(); "
+                      b"function play(name) { plays = plays.concat([name]) } }", QUrl())
+    bank = component.create()
+    assert bank is not None, component.errorString()
+    sfx = cues.sfx
+    try:
+        sfx.setProperty("_bank", bank)
+        sfx.setProperty("_state", "loading")
+        cues.call(sfx, "play", "toggle_on")
+        assert cues.played == ["toggle_on"]
+        assert bank.property("plays").toVariant() == []
+        bank.setProperty("ready", True)
+        cues.call(sfx, "_bankState")
+        assert sfx.property("state") == "ready"
+        assert bank.property("plays").toVariant() == ["toggle_on"]
+        cues.call(sfx, "_bankState")                 # played once, not again
+        assert bank.property("plays").toVariant() == ["toggle_on"]
+    finally:
+        sfx.setProperty("_bank", None)
+        sfx.setProperty("_state", "off")
+        bank.deleteLater()
+    assert cues.messages == []
+
+
 def test_startup_is_silent(cues):
     # the fixture's window saw the demo daemon's first frame and connection
     cues.daemon.set_state(cpu_temp=41.0)

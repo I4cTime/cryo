@@ -181,3 +181,22 @@ def test_accent_override_changes_only_the_accent(gui):
     spin(30)
     assert theme.property("accent").name().upper() == "#00D1FF"
     assert gui.messages == []
+
+
+def test_frost_ink_reads_on_every_style(gui):
+    """frostInk draws frost as a mark (bloom, guard motes, reveal glint): it
+    must stand out from the style's panel and background."""
+    from PySide6.QtGui import QColor
+
+    def lum(c: QColor) -> float:
+        def lin(v: float) -> float:
+            return v / 12.92 if v <= 0.04045 else ((v + 0.055) / 1.055) ** 2.4
+        return 0.2126 * lin(c.redF()) + 0.7152 * lin(c.greenF()) + 0.0722 * lin(c.blueF())
+
+    def contrast(a: str, b: str) -> float:
+        la, lb = lum(QColor(a)), lum(QColor(b))
+        return (max(la, lb) + 0.05) / (min(la, lb) + 0.05)
+
+    for name, style in _styles(gui).items():
+        for ground in ("panel", "bg"):
+            assert contrast(style["frostInk"], style[ground]) >= 3.0, (name, ground)

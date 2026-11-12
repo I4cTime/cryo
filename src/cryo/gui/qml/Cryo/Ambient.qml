@@ -23,6 +23,12 @@ QtObject {
     readonly property bool motion: live && !Prefs.reduceMotion
     // cryod reachable (mirrors daemon.connected).
     property bool connected: false
+    // cryod unreachable: the telemetry on screen is the last reading. The
+    // temperature tiles, the dGPU load and VRAM dim to staleOpacity, their
+    // arcs and figures go muted and the fan glyphs stop (capability
+    // honesty: shown, never hidden). Controls are not affected.
+    readonly property bool stale: !connected
+    readonly property real staleOpacity: 0.45
 
     // ---- pushed from the daemon by Main.qml ----
     property real cpuTemp: 0
@@ -63,14 +69,14 @@ QtObject {
 
     // ---- frost ----
     // Idle frost frames the window while cool and is gone by about 69 °C.
-    readonly property real idleMax: 0.38
+    readonly property real idleMax: 0.40
     readonly property real idleFade: 0.6     // heat at which idle frost is gone
     readonly property real peakAmount: 0.95  // flash freeze overshoot
-    readonly property real heldAmount: 0.48  // frosted frame while the guard holds
+    readonly property real heldAmount: 0.44  // frosted frame while the guard holds
     // Dormant (no daemon, no thermals) the window looks iced over and
     // asleep: a light fixed frost instead of the heat-derived one. The
     // switch eases over 600 ms when motion is allowed.
-    readonly property real dormantFrost: 0.22
+    readonly property real dormantFrost: 0.34
     property real dormantMix: 0              // 0 awake .. 1 dormant
     onDormantChanged: {
         dormantEase.stop()

@@ -23,7 +23,7 @@ QtObject {
             fg: "#F3F5F9", muted: "#828690",
             accent: "#00D1FF", accent2: "#7B2DFF", accent2Text: "#A082FF",
             knob: "#F3F5F9",
-            frost: "#BFEFFF", frostRim: "#FFFFFF", frostShade: "#4A6478",
+            frost: "#BFEFFF", frostRim: "#FFFFFF", frostShade: "#4A6478", frostInk: "#D6F5FF",
             frostShadeStrength: 0, frostIntensity: 0.72,
             hot: "#FF5470", warn: "#FFB300", ok: "#3DDC97",
             shadow: "#000000", shadowOpacity: 0.9, glow: 1.0,
@@ -42,7 +42,7 @@ QtObject {
             fg: "#EFFAF6", muted: "#7F9A97",
             accent: "#3DF5B4", accent2: "#8A5CFF", accent2Text: "#B49CFF",
             knob: "#EFFAF6",
-            frost: "#C8FFF0", frostRim: "#F2FFFA", frostShade: "#3F6A66",
+            frost: "#C8FFF0", frostRim: "#F2FFFA", frostShade: "#3F6A66", frostInk: "#D2FFF2",
             frostShadeStrength: 0, frostIntensity: 0.85,
             hot: "#FF5470", warn: "#FFB300", ok: "#3DDC97",
             shadow: "#000000", shadowOpacity: 0.9, glow: 0.9,
@@ -61,7 +61,7 @@ QtObject {
             fg: "#0B2233", muted: "#566E80",
             accent: "#006B93", accent2: "#6A3DE8", accent2Text: "#5A32C8",
             knob: "#FFFFFF",
-            frost: "#FFFFFF", frostRim: "#FFFFFF", frostShade: "#5F87A3",
+            frost: "#FFFFFF", frostRim: "#FFFFFF", frostShade: "#5F87A3", frostInk: "#3A7CA5",
             frostShadeStrength: 0.7, frostIntensity: 0.95,
             hot: "#C21E3C", warn: "#9E5C00", ok: "#17845A",
             shadow: "#5A7A95", shadowOpacity: 0.22, glow: 0.45,
@@ -80,7 +80,7 @@ QtObject {
             fg: "#EDEDED", muted: "#7A7A7A",
             accent: "#9BE7FF", accent2: "#6E6E78", accent2Text: "#A0A0AA",
             knob: "#EDEDED",
-            frost: "#DDEFF5", frostRim: "#F4FBFD", frostShade: "#3A4A52",
+            frost: "#DDEFF5", frostRim: "#F4FBFD", frostShade: "#3A4A52", frostInk: "#E4F4FA",
             frostShadeStrength: 0, frostIntensity: 0.6,
             hot: "#FF5470", warn: "#FFB300", ok: "#3DDC97",
             shadow: "#000000", shadowOpacity: 0.9, glow: 0.35,
@@ -145,6 +145,10 @@ QtObject {
     readonly property color frost: s.frost
     readonly property color frostRim: s.frostRim
     readonly property color frostShade: s.frostShade
+    // Frost drawn as a mark on the window (bloom crystals, guard motes, the
+    // reveal glint, the ice sheen in panels): stays visible on this style's
+    // panel and background (pale on dark styles, deeper ice blue on light).
+    readonly property color frostInk: s.frostInk
     readonly property real frostShadeStrength: s.frostShadeStrength
     readonly property real frostIntensity: s.frostIntensity
     readonly property color hot: s.hot

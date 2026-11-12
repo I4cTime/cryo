@@ -13,7 +13,7 @@ import QtQuick.Effects
 Item {
     id: bloom
     property real radius: 12
-    property color tint: Theme.isLight ? Theme.mix(Theme.frostShade, Theme.accent, 0.35) : Theme.frost
+    property color tint: Theme.frostInk
     // how far the spokes reach at full size
     property real reach: Math.max(width, height) * 0.72
     readonly property bool active: burstAnim.running

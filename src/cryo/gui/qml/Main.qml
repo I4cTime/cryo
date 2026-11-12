@@ -50,6 +50,7 @@ ApplicationWindow {
     readonly property int pageFadeMs: 160
 
     Flickable {
+        id: scroller
         objectName: "scroller"
         anchors.fill: parent
         opacity: root.page === "home" ? 1 : 0
@@ -68,7 +69,10 @@ ApplicationWindow {
             width: root.width - 40
             spacing: 18
 
-            Header { onSettingsClicked: root.page = root.page === "home" ? "settings" : "home" }
+            Header {
+                id: homeHeader
+                onSettingsClicked: root.page = root.page === "home" ? "settings" : "home"
+            }
             ErrorBanner {}
             PowerModes { objectName: "secModes" }
             Telemetry { objectName: "secTelemetry" }
@@ -99,9 +103,25 @@ ApplicationWindow {
 
     // The frost map runs past the window edge by this much, so the corner
     // ferns (which freeze first and reach furthest) start outside the pane
-    // and idle frost frames the content instead of covering it.
-    readonly property real frostBleed: 34
-    readonly property real frostBleedTop: 48   // the header row sits close to the top
+    // and idle frost frames the content instead of covering it. The bottom
+    // runs furthest out: content scrolls under that edge, so at idle it
+    // keeps only a thin fringe and held frost leaves the last row readable.
+    // The Ambient amounts are tuned to these numbers (docs/THEME.md).
+    readonly property real frostBleed: 56
+    readonly property real frostBleedTop: 56
+    readonly property real frostBleedBottom: 140
+
+    // The header controls of the page on screen (badges, connection dot,
+    // gear; on Settings the close button), in window coordinates: the frost
+    // keeps clear of them so they stay readable in a frosted corner.
+    readonly property rect frostClear: root.page === "settings" && settingsLoader.item
+        ? settingsLoader.item.clearRect
+        : Qt.rect(content.x + homeHeader.x + homeHeader.controlsRect.x,
+                  content.y + homeHeader.y + homeHeader.controlsRect.y - scroller.contentY,
+                  homeHeader.controlsRect.width, homeHeader.controlsRect.height)
+    readonly property rect frostClearLocal: Qt.rect(root.frostClear.x + root.frostBleed,
+                                                    root.frostClear.y + root.frostBleedTop,
+                                                    root.frostClear.width, root.frostClear.height)
 
     // Window frost, above everything and input-transparent. Its amount comes
     // from Ambient (idle frost by heat, the guard's flash freeze and thaw).
@@ -111,6 +131,7 @@ ApplicationWindow {
         anchors.fill: parent
         anchors.margins: -root.frostBleed
         anchors.topMargin: -root.frostBleedTop
+        anchors.bottomMargin: -root.frostBleedBottom
         z: 100
         amount: Ambient.frostAmount
         tint: Theme.frost
@@ -118,6 +139,7 @@ ApplicationWindow {
         intensity: Theme.frostIntensity
         shade: Theme.frostShade
         shadeStrength: Theme.frostShadeStrength
+        clearRect: root.frostClearLocal
     }
     // Reduce motion (or an unfocused window) skips the sweep: the frost jumps
     // to its new amount and, if the window is live, crossfades from the old
@@ -127,6 +149,7 @@ ApplicationWindow {
         anchors.fill: parent
         anchors.margins: -root.frostBleed
         anchors.topMargin: -root.frostBleedTop
+        anchors.bottomMargin: -root.frostBleedBottom
         z: 100
         opacity: 0
         visible: opacity > 0 && amount > 0.001
@@ -135,6 +158,7 @@ ApplicationWindow {
         intensity: Theme.frostIntensity
         shade: Theme.frostShade
         shadeStrength: Theme.frostShadeStrength
+        clearRect: root.frostClearLocal
     }
     ParallelAnimation {
         id: frostCrossfade

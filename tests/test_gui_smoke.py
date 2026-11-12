@@ -88,9 +88,10 @@ def test_settings_page_toggles_and_returns(gui):
     spin(50)
     assert window.property("page") == "settings"
     assert window.findChild(QObject, "scroller").property("visible") is False
-    back = window.findChild(QObject, "settingsBack")
-    assert back is not None
-    back.clicked.emit()
+    close = window.findChild(QObject, "settingsClose")
+    assert close is not None
+    assert window.findChild(QObject, "settingsBack") is None
+    close.clicked.emit()
     spin(50)
     assert window.property("page") == "home"
     assert gui.messages == []

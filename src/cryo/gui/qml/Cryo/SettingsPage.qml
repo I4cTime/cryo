@@ -3,7 +3,7 @@ import QtQuick.Controls.Basic
 import QtQuick.Layouts
 
 // The Settings view. Main.qml shows it when the window's page is
-// "settings"; `back` (the back button or Escape) returns home. Everything
+// "settings"; `back` (the close button or Escape) returns home. Everything
 // here reads and writes the Prefs singleton, which persists on its own, so
 // there is no apply step. Same margins, rhythm and section titles as the
 // home column.
@@ -21,6 +21,11 @@ FocusScope {
     readonly property bool soundUsable: Prefs.soundEnabled && Sfx.available
     // Sub-controls line up with the row titles; the row icons form a gutter.
     readonly property real inset: 28              // SettingRow.gutter
+    // The close button in page coordinates: the window frost keeps clear
+    // of it (Main.qml), as it does of the gear on the home page.
+    readonly property rect clearRect: Qt.rect(content.x + settingsHeader.x + closeButton.x,
+                                              content.y + settingsHeader.y + closeButton.y - scroller.contentY,
+                                              closeButton.width, closeButton.height)
 
     component Divider: Rectangle {
         Layout.fillWidth: true
@@ -46,29 +51,23 @@ FocusScope {
             spacing: 18
 
             // ---- header ----
+            // Same metrics as the home Header: the title sits where the mark
+            // and wordmark are, and the close button exactly where the gear
+            // is, so opening and closing Settings never moves the pointer.
             RowLayout {
+                id: settingsHeader
+                objectName: "settingsHeader"
                 Layout.fillWidth: true
-                Layout.preferredHeight: 42
                 spacing: 12
-                IconButton {
-                    objectName: "settingsBack"
-                    Layout.preferredWidth: 38
-                    Layout.preferredHeight: 38
-                    boxed: true
-                    name: "back"
-                    tooltip: "Back (Esc)"
-                    color: Theme.fg
-                    onClicked: page.back()
-                }
                 ColumnLayout {
                     Layout.fillWidth: true
                     spacing: 2
                     Label {
                         text: "SETTINGS"
                         color: Theme.fg
-                        font.pixelSize: 22
+                        font.pixelSize: 26
                         font.bold: true
-                        font.letterSpacing: 5
+                        font.letterSpacing: 6
                     }
                     Label {
                         Layout.fillWidth: true
@@ -77,6 +76,14 @@ FocusScope {
                         font.pixelSize: 12
                         elide: Text.ElideRight
                     }
+                }
+                IconButton {
+                    id: closeButton
+                    objectName: "settingsClose"
+                    Layout.leftMargin: -4
+                    name: "close"
+                    tooltip: "Close (Esc)"
+                    onClicked: page.back()
                 }
             }
 
@@ -123,7 +130,7 @@ FocusScope {
                     SettingRow {
                         icon: "snowflake"
                         title: "Frost and thermal chrome"
-                        description: "Frost at the window edges and washes that follow the machine's heat."
+                        description: "Frost at the edges, and backdrop washes that follow the machine's heat."
                         CryoSwitch {
                             objectName: "effectsSwitch"
                             checked: Prefs.effects
@@ -159,9 +166,21 @@ FocusScope {
                         title: "Interface sounds"
                         description: "Mode changes, Thermal Guard, connection and clicks."
                         CryoSwitch {
+                            // Its cue goes around the setting: "toggle_on"
+                            // after sound is on (Sfx holds it until the bank
+                            // has loaded), "toggle_off" while it still is.
                             objectName: "soundSwitch"
+                            cue: false
                             checked: Prefs.soundEnabled
-                            onToggled: Prefs.soundEnabled = checked
+                            onToggled: {
+                                if (checked) {
+                                    Prefs.soundEnabled = true
+                                    Sfx.play("toggle_on")
+                                } else {
+                                    Sfx.play("toggle_off")
+                                    Prefs.soundEnabled = false
+                                }
+                            }
                         }
                     }
                     RowLayout {

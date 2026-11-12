@@ -13,6 +13,11 @@ import QtQuick
 // What plays when is decided in one place, SoundWiring.qml (state cues), plus
 // the control hooks in CryoSwitch, CryoButton and IconButton.
 //
+// A cue accepted while the bank is still loading (the "toggle_on" of the
+// switch that just turned sound on) is held and plays as soon as the bank is
+// ready, if that is within `pendingMs`. Turning sound off keeps the bank for
+// `closeDelayMs`, so the switch's own "toggle_off" is heard to the end.
+//
 // Test hook: with `dryRun` true nothing is created or played, but `played`
 // still fires for every accepted cue, so tests and the tour can assert the
 // triggers without making a sound.
@@ -30,12 +35,16 @@ QtObject {
     readonly property string reason: _reason
     // The same cue does not restart within this many ms.
     readonly property int minGapMs: 60
+    readonly property int pendingMs: 1500
+    readonly property int closeDelayMs: 450
     signal played(string name)
 
     property string _state: "off"
     property string _reason: ""
     property var _bank: null
     property var _last: ({})
+    property string _pending: ""
+    property real _pendingAt: 0
     readonly property bool _wanted: Prefs.soundEnabled && !dryRun
     readonly property string _set: sets.indexOf(Prefs.soundSet) >= 0 ? Prefs.soundSet : "ice"
     // Slider position 0..1 to amplitude: squared, closer to how loud it sounds.
@@ -49,11 +58,30 @@ QtObject {
             return
         _last[name] = now
         played(name)
-        if (_bank !== null && _state === "ready")
+        if (_bank === null)
+            return
+        if (_state === "ready") {
             _bank.play(name)
+        } else if (_state === "loading") {
+            _pending = name
+            _pendingAt = now
+        }
     }
 
-    on_WantedChanged: _wanted ? _open() : _close()
+    on_WantedChanged: {
+        if (_wanted) {
+            _closeLater.stop()
+            _open()
+        } else if (_bank !== null) {
+            _closeLater.restart()
+        } else {
+            _close()
+        }
+    }
+    readonly property Timer _closeLater: Timer {
+        interval: sfx.closeDelayMs
+        onTriggered: if (!sfx._wanted) sfx._close()
+    }
     Component.onCompleted: if (_wanted) _open()
 
     function _open() {
@@ -81,10 +109,16 @@ QtObject {
     function _bankState() {
         if (_bank === null)
             return
-        if (_bank.failed !== "")
+        if (_bank.failed !== "") {
             _fail(_bank.failed)
-        else
-            _state = _bank.ready ? "ready" : "loading"
+            return
+        }
+        _state = _bank.ready ? "ready" : "loading"
+        if (_state === "ready" && _pending !== "") {
+            if (Date.now() - _pendingAt <= pendingMs)
+                _bank.play(_pending)
+            _pending = ""
+        }
     }
     function _fail(why) {
         console.info("cryo: sound unavailable: " + why)
@@ -93,6 +127,8 @@ QtObject {
         _state = "unavailable"
     }
     function _close() {
+        _closeLater.stop()
+        _pending = ""
         if (_bank !== null) {
             _bank.destroy()
             _bank = null

@@ -76,8 +76,22 @@ Item {
         mipmap: true
         visible: false
     }
+    // The software renderer draws no MultiEffect: there the mark is the
+    // plain image (no bloom; asleep it only dims).
+    readonly property bool effectsDrawn: GraphicsInfo.api !== GraphicsInfo.Software
+    Image {
+        objectName: "markPlain"
+        anchors.fill: parent
+        visible: !mark.effectsDrawn
+        source: brandMark.source
+        fillMode: Image.PreserveAspectFit
+        smooth: true
+        mipmap: true
+        opacity: 0.42 + 0.58 * mark.awake
+    }
     MultiEffect {
         // static bloom - rendered once; asleep it is grey, dim and bare
+        visible: mark.effectsDrawn
         source: brandMark
         anchors.fill: brandMark
         opacity: 0.42 + 0.58 * mark.awake
@@ -104,9 +118,8 @@ Item {
         { orbit: 1, at: 0.72, size: 2.2, ice: true },
         { orbit: 2, at: 0.40, size: 2.8, ice: false }
     ]
-    // Ice ink: the guard's frost white (a light style needs it darker to
-    // read on its pale background).
-    readonly property color iceInk: Theme.isLight ? Theme.frostShade : Theme.frostRim
+    // Ice ink: the guard's frost (Theme.frostInk reads on every style).
+    readonly property color iceInk: Theme.frostInk
 
     Repeater {
         model: mark.motes
