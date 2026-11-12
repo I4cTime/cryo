@@ -43,8 +43,19 @@ jobs:
       - name: CLI help
         run: uv run cryoctl --help
 
+      # Shared libraries PySide6's QtCore/QtGui/QtQuick/QtNetwork load
+      # (GL/EGL, xkbcommon, fontconfig, D-Bus, GLib, Kerberos), so the
+      # offscreen GUI smoke test runs here instead of skipping. Verified
+      # sufficient on a bare ubuntu:24.04 image.
+      - name: Qt runtime libraries
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q --no-install-recommends \
+            libegl1 libgl1 libxkbcommon0 libfontconfig1 libdbus-1-3 \
+            libglib2.0-0t64 libgssapi-krb5-2
+
       - name: Tests
-        run: uv run pytest -q
+        run: uv run pytest -q -rs
 
       - name: Version consistency
         run: |
