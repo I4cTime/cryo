@@ -7,6 +7,10 @@ ColumnLayout {
     id: section
     Layout.fillWidth: true
     spacing: 18
+    // first-show reveal (Crystallize.qml)
+    opacity: reveal.t
+    transform: Translate { y: reveal.rise }
+    Crystallize { id: reveal; target: section; title: sectionTitle; order: 2 }
     visible: daemon.hasThermals
 
     function fanBoost(group) {
@@ -15,7 +19,7 @@ ColumnLayout {
         return 0
     }
 
-    SectionTitle { text: "FAN CONTROL"; visible: daemon.hasThermals }
+    SectionTitle { id: sectionTitle; text: "FAN CONTROL"; visible: daemon.hasThermals }
     Panel {
         Layout.fillWidth: true
         visible: daemon.hasThermals

@@ -67,7 +67,25 @@ QtObject {
     readonly property real idleFade: 0.6     // heat at which idle frost is gone
     readonly property real peakAmount: 0.95  // flash freeze overshoot
     readonly property real heldAmount: 0.48  // frosted frame while the guard holds
-    readonly property real idleFrost: idleMax * Math.max(0, Math.min(1, 1 - heat / idleFade))
+    // Dormant (no daemon, no thermals) the window looks iced over and
+    // asleep: a light fixed frost instead of the heat-derived one. The
+    // switch eases over 600 ms when motion is allowed.
+    readonly property real dormantFrost: 0.22
+    property real dormantMix: 0              // 0 awake .. 1 dormant
+    onDormantChanged: {
+        dormantEase.stop()
+        if (motion) {
+            dormantEase.to = dormant ? 1 : 0
+            dormantEase.start()
+        } else {
+            dormantMix = dormant ? 1 : 0
+        }
+    }
+    readonly property NumberAnimation dormantEase: NumberAnimation {
+        target: ambient; property: "dormantMix"; duration: 600; easing.type: Easing.InOutSine
+    }
+    readonly property real heatFrost: idleMax * Math.max(0, Math.min(1, 1 - heat / idleFade))
+    readonly property real idleFrost: heatFrost + (dormantFrost - heatFrost) * dormantMix
     // "none", "sweep" (freezing over), "held" (settled, guard on), "thaw".
     property string guardPhase: "none"
     property real guardFrost: 0
@@ -124,16 +142,64 @@ QtObject {
         onFinished: ambient.guardPhase = "none"
     }
 
+    // ---- reveal: the sections crystallize in once, at first show ----
+    // The first time the window is live, `reveal(animate)` goes out (a beat
+    // later, so every section is listening) and `revealed` turns true;
+    // Crystallize.qml plays it per section. A window that never becomes
+    // live soon (started hidden in the tray, or shown unfocused) skips it:
+    // after `revealDeadline` the sections simply show.
+    property bool revealed: false
+    signal reveal(bool animate)
+    function _reveal() {
+        if (revealed)
+            return
+        reveal(motion)
+        if (motion)
+            revealShadowAnim.restart()
+        revealed = true
+    }
+    // Panel drop shadows settle in at the end of the reveal: under a
+    // half-faded panel the shadow (and the fill it is cast from) would show
+    // through (grey slabs on a light style).
+    property real revealShadow: 1
+    readonly property NumberAnimation revealShadowAnim: NumberAnimation {
+        target: ambient; property: "revealShadow"; from: 0; to: 1
+        duration: 900; easing.type: Easing.InCubic
+    }
+    onLiveChanged: {
+        if (live && !revealed)
+            revealKick.restart()
+        if (!live && revealShadowAnim.running) {     // never animate unseen
+            revealShadowAnim.stop()
+            revealShadow = 1
+        }
+    }
+    readonly property Timer revealKick: Timer { interval: 40; onTriggered: ambient._reveal() }
+    readonly property Timer revealDeadline: Timer {
+        interval: 1500; running: !ambient.revealed
+        onTriggered: if (!ambient.revealed) { ambient.reveal(false); ambient.revealed = true }
+    }
+    // Tour hook: play the reveal again (needs a live window).
+    function replayReveal() {
+        revealed = false
+        _reveal()
+    }
+
     // Jump every running chrome animation to where it is heading (the tour
     // calls this between scenes so each shot starts from rest).
     function snap() {
         heatEase.stop()
         heat = heatTarget
+        dormantEase.stop()
+        dormantMix = dormant ? 1 : 0
         sweepAnim.stop()
         thawAnim.stop()
         guardFrost = guard ? heldAmount : 0
         guardPhase = guard ? "held" : "none"
     }
 
-    Component.onCompleted: heat = heatTarget
+    Component.onCompleted: {
+        heat = heatTarget
+        dormantMix = dormant ? 1 : 0
+    }
 }

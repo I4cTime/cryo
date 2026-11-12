@@ -8,9 +8,13 @@ ColumnLayout {
     id: section
     Layout.fillWidth: true
     spacing: 18
+    // first-show reveal (Crystallize.qml)
+    opacity: reveal.t
+    transform: Translate { y: reveal.rise }
+    Crystallize { id: reveal; target: section; title: sectionTitle; order: 5 }
     visible: daemon.hasLighting
 
-    SectionTitle { text: "LIGHTING"; visible: daemon.hasLighting }
+    SectionTitle { id: sectionTitle; text: "LIGHTING"; visible: daemon.hasLighting }
     Panel {
         visible: daemon.hasLighting
         Layout.fillWidth: true

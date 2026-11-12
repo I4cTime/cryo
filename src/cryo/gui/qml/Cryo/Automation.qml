@@ -7,8 +7,12 @@ ColumnLayout {
     id: section
     Layout.fillWidth: true
     spacing: 18
+    // first-show reveal (Crystallize.qml)
+    opacity: reveal.t
+    transform: Translate { y: reveal.rise }
+    Crystallize { id: reveal; target: section; title: sectionTitle; order: 4 }
 
-    SectionTitle { text: "AUTOMATION" }
+    SectionTitle { id: sectionTitle; text: "AUTOMATION" }
     Panel {
         Layout.fillWidth: true
         implicitHeight: autoColumn.height + 28

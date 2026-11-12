@@ -32,3 +32,6 @@ Automation 1.0 Automation.qml
 Lighting 1.0 Lighting.qml
 Footer 1.0 Footer.qml
 SettingsPage 1.0 SettingsPage.qml
+RollingNumber 1.0 RollingNumber.qml
+FrostBloom 1.0 FrostBloom.qml
+Crystallize 1.0 Crystallize.qml

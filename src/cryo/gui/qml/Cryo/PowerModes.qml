@@ -5,10 +5,15 @@ import QtQuick.Layouts
 // Power modes - rendered from the daemon's capability list, so
 // Legacy-profile or no-G-Mode machines see exactly what exists.
 ColumnLayout {
+    id: section
     Layout.fillWidth: true
     spacing: 18
+    // first-show reveal (Crystallize.qml)
+    opacity: reveal.t
+    transform: Translate { y: reveal.rise }
+    Crystallize { id: reveal; target: section; title: sectionTitle; order: 0 }
 
-    SectionTitle { text: "POWER MODES"; visible: daemon.hasProfiles }
+    SectionTitle { id: sectionTitle; text: "POWER MODES"; visible: daemon.hasProfiles }
     // All modes on one row: compact, still glowing when active.
     RowLayout {
         Layout.fillWidth: true

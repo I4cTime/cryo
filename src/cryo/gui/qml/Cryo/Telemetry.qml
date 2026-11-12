@@ -7,6 +7,10 @@ ColumnLayout {
     id: section
     Layout.fillWidth: true
     spacing: 18
+    // first-show reveal (Crystallize.qml)
+    opacity: reveal.t
+    transform: Translate { y: reveal.rise }
+    Crystallize { id: reveal; target: section; title: sectionTitle; order: 1 }
 
     function fanRpm(group) {
         let total = 0, n = 0
@@ -34,7 +38,7 @@ ColumnLayout {
         }
     }
 
-    SectionTitle { text: "TELEMETRY" }
+    SectionTitle { id: sectionTitle; text: "TELEMETRY" }
     RowLayout {
         Layout.fillWidth: true
         spacing: 10

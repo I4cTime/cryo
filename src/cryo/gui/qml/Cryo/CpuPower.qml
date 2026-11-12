@@ -7,9 +7,13 @@ ColumnLayout {
     id: section
     Layout.fillWidth: true
     spacing: 18
+    // first-show reveal (Crystallize.qml)
+    opacity: reveal.t
+    transform: Translate { y: reveal.rise }
+    Crystallize { id: reveal; target: section; title: sectionTitle; order: 3 }
     visible: daemon.hasCpuCap || daemon.hasTurbo
 
-    SectionTitle { text: "CPU POWER"; visible: daemon.hasCpuCap || daemon.hasTurbo }
+    SectionTitle { id: sectionTitle; text: "CPU POWER"; visible: daemon.hasCpuCap || daemon.hasTurbo }
     Panel {
         Layout.fillWidth: true
         visible: daemon.hasCpuCap || daemon.hasTurbo
