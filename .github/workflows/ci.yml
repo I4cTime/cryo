@@ -66,3 +66,63 @@ jobs:
           assert py == cryo.__version__, f"pyproject {py} != __init__ {cryo.__version__}"
           print("version", py)
           PY
+
+  # Builds the release bundle and runs a real install, upgrade (rerun) and
+  # uninstall on the runner. The runner has no Alienware hardware, so cryod
+  # must exit 78 once and stay down.
+  bundle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v10.3.3
+        with:
+          python-version: "3.12"
+
+      - name: Cache the pinned uv download
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/cryo-bundle
+          key: cryo-bundle-uv-${{ hashFiles('tools/build_bundle.py') }}
+
+      - name: Build bundle
+        run: uv run --no-project tools/build_bundle.py --out dist --uv-cache ~/.cache/cryo-bundle
+
+      - name: Extract
+        run: |
+          mkdir -p "$RUNNER_TEMP/bundle"
+          tar -xzf dist/cryo-*-linux-x86_64.tar.gz -C "$RUNNER_TEMP/bundle"
+          echo "BUNDLE_DIR=$(echo "$RUNNER_TEMP"/bundle/cryo-*)" >> "$GITHUB_ENV"
+          echo "VERSION=$(cat "$RUNNER_TEMP"/bundle/cryo-*/VERSION)" >> "$GITHUB_ENV"
+
+      # pyusb needs the system libusb-1.0 (every desktop has it); without it
+      # cryod crashes instead of reporting unsupported hardware.
+      - name: libusb
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q --no-install-recommends libusb-1.0-0
+
+      - name: Install
+        run: cd "$BUNDLE_DIR" && sudo ./install.sh
+
+      - name: Check install
+        run: sudo tools/bundle_check.sh installed "$USER" "$VERSION"
+
+      - name: Upgrade (rerun the installer)
+        run: cd "$BUNDLE_DIR" && sudo ./install.sh
+
+      - name: Check upgrade
+        run: sudo tools/bundle_check.sh installed "$USER" "$VERSION"
+
+      - name: Uninstall
+        run: sudo /opt/cryo/uninstall.sh
+
+      - name: Check uninstall
+        run: sudo tools/bundle_check.sh uninstalled
+
+      - name: Uninstall again (idempotent) with --purge
+        run: sudo "$BUNDLE_DIR/uninstall.sh" --purge
+
+      - name: Check purge
+        run: sudo tools/bundle_check.sh purged
