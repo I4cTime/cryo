@@ -190,3 +190,158 @@ def test_real_daemon_starts_standing_by(qapp, monkeypatch, tmp_path):
     finally:
         daemon._reconnect.stop()
         daemon.deleteLater()
+
+
+# -- the real connection order (no sockets) ---------------------------------
+#
+# DemoDaemon is connected and has a frame from construction, which hides
+# what a real start looks like: cryod's stream connects first and the first
+# telemetry frame follows about a second later. WireDaemon is the socket
+# bridge with the sockets stubbed, driven through the same handlers the
+# QLocalSocket signals call.
+
+
+class _Stream:
+    def __init__(self) -> None:
+        self.written: list[bytes] = []
+
+    def write(self, data: bytes) -> None:
+        self.written.append(data)
+
+
+def _wire_daemon_class():
+    from PySide6.QtCore import QTimer
+
+    from cryo.gui.bridge import Daemon
+
+    class WireDaemon(Daemon):
+        def _setup_transport(self) -> None:
+            self._buffer = b""
+            self._stream = _Stream()
+            self.commands: list[dict] = []
+            self._reconnect = QTimer(self)        # started on disconnect, never fires here
+
+        def _connect(self) -> None:
+            pass
+
+        def _command(self, payload: dict) -> None:
+            self.commands.append(payload)
+
+    return WireDaemon
+
+
+def frame(**kw) -> dict:
+    base = {
+        "event": "telemetry", "profile": "balanced", "turbo": True, "ac": True,
+        "cpu_temp": 41.0, "gpu_temp": 38.0, "fans": [{"index": 1, "rpm": 1200}],
+        "gaming": False, "guard": False,
+    }
+    return {**base, **kw}
+
+
+@pytest.fixture
+def wire(qapp):
+    def make(seed: int = 0):
+        clock = Clock()
+        daemon = _wire_daemon_class()(voice=FrostVoice(rng=random.Random(seed), clock=clock))
+        lines: list[tuple[str, str]] = []
+        daemon.frostLineChanged.connect(lambda: lines.append((daemon.frostLineKey, daemon.frostLine)))
+        made.append(daemon)
+        return daemon, clock, lines
+
+    made: list = []
+    yield make
+    for daemon in made:
+        daemon._reconnect.stop()
+        daemon._frost_timer.stop()
+        daemon.deleteLater()
+
+
+def test_real_start_greets_from_the_first_frame_without_a_profile_line(wire):
+    for seed in range(40):              # every greeting variant, the profile one included
+        daemon, clock, lines = wire(seed)
+        daemon._on_stream_connected()
+        assert daemon.connected is True
+        assert situation(daemon) == "disconnected"     # no frame yet: nothing to greet on
+        assert daemon.commands == [{"op": "get_config"}]
+        clock.now += 4.0                               # a slow first frame, timer ticks meanwhile
+        daemon._update_frost()
+        assert situation(daemon) == "disconnected"
+        daemon._apply_telemetry(frame())
+        assert situation(daemon) == "greeting"
+        # The greeting window starts at the first frame, not at connect.
+        for _ in range(int(voice_mod.GREETING_SECONDS) - 1):
+            clock.now += 1.0
+            daemon._apply_telemetry(frame())
+            assert situation(daemon) == "greeting"
+        clock.now += 2.0
+        daemon._apply_telemetry(frame())
+        assert situation(daemon) == "cool"
+        clock.now += 1.0
+        daemon._apply_telemetry(frame(profile="quiet"))    # a real change
+        assert situation(daemon) == "profile" and "Quiet" in daemon.frostLine
+        keys = [key.split(":")[0] for key, _ in lines]
+        assert keys.count("profile") == 1, keys
+        assert not any("Unknown" in text for _, text in lines), lines
+
+
+def test_an_empty_profile_is_never_said_and_never_a_change(wire):
+    for seed in range(40):
+        daemon, clock, lines = wire(seed)
+        daemon._on_stream_connected()
+        daemon._apply_telemetry(frame(profile=""))
+        for _ in range(10):
+            clock.now += 1.0
+            daemon._apply_telemetry(frame(profile=""))
+        daemon._apply_telemetry(frame(profile="balanced"))   # first known id: not a change
+        clock.now += 1.0
+        daemon._apply_telemetry(frame(profile=""))           # unknown again: not a change
+        clock.now += 1.0
+        daemon._apply_telemetry(frame(profile="balanced"))
+        assert not any(key.startswith("profile:") for key, _ in lines), lines
+        assert not any("Unknown" in text for _, text in lines), lines
+
+
+def test_reconnect_does_not_replay_a_stale_guard(wire):
+    daemon, clock, lines = wire()
+    events: list[tuple[bool, bool]] = []
+    daemon.eventsChanged.connect(lambda: events.append((daemon.guard, daemon.gaming)))
+    daemon._on_stream_connected()
+    daemon._apply_telemetry(frame(guard=True, gaming=True, cpu_temp=92.0, gpu_temp=84.0))
+    assert daemon.guard is True and daemon.gaming is True
+    assert situation(daemon) == "guard"
+
+    daemon._on_stream_disconnected()                   # cryod restarts
+    assert daemon.connected is False
+    assert daemon.guard is False and daemon.gaming is False
+    assert daemon.cpuTemp == pytest.approx(92.0)       # the last reading stays readable
+    assert daemon.gpuTemp == pytest.approx(84.0)
+    assert daemon.profile == "balanced"
+    assert situation(daemon) == "disconnected"
+
+    clock.now += 3.0
+    daemon._on_stream_connected()                      # back, no frame yet
+    assert daemon.connected is True
+    assert daemon.guard is False and daemon.gaming is False
+    assert situation(daemon) == "disconnected"
+    assert daemon.cpuTemp == pytest.approx(92.0)
+
+    clock.now += 1.0
+    daemon._apply_telemetry(frame(guard=True, cpu_temp=91.0))   # the frame decides
+    assert daemon.guard is True and daemon.gaming is False
+    assert situation(daemon) == "guard"
+    assert events == [(True, True), (False, False), (True, False)]
+    guard_lines = [key for key, _ in lines if key.startswith(("guard:", "recovered:"))]
+    assert all(key.startswith("guard:") for key in guard_lines), lines
+
+
+def test_reconnect_with_the_guard_gone_follows_the_frame(wire):
+    daemon, clock, _ = wire()
+    daemon._on_stream_connected()
+    daemon._apply_telemetry(frame(guard=True, cpu_temp=92.0))
+    daemon._on_stream_disconnected()
+    daemon._on_stream_connected()
+    assert daemon.guard is False
+    daemon._apply_telemetry(frame(guard=False, cpu_temp=60.0))
+    assert daemon.guard is False
+    assert daemon.cpuTemp == pytest.approx(60.0)

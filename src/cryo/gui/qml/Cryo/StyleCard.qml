@@ -10,7 +10,7 @@ import QtQuick.Layouts
 Rectangle {
     id: card
     required property string styleKey
-    readonly property var st: Theme.styles[styleKey]
+    readonly property var st: Theme.styleFor(styleKey)
     readonly property bool selected: Theme.styleName === styleKey
     readonly property color previewAccent: Theme.accentFor(styleKey)
     signal picked()

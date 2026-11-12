@@ -95,8 +95,15 @@ QtObject {
     // "none", "sweep" (freezing over), "held" (settled, guard on), "thaw".
     property string guardPhase: "none"
     property real guardFrost: 0
+    // The thaw blends from the frost the guard left (guardFrost at release)
+    // to the LIVE idle target, so a target that moves meanwhile (temps
+    // falling, a disconnect turning dormant) is followed and the end of the
+    // thaw meets idleFrost exactly: no jump when the phase returns to "none".
+    property real thawProgress: 0            // 0 at release .. 1 thawed
+    readonly property real thawFrost: guardFrost + (idleFrost - guardFrost) * thawProgress
     readonly property real frostAmount: !Prefs.effects ? 0
-                                        : guardPhase === "none" ? idleFrost : guardFrost
+                                        : guardPhase === "none" ? idleFrost
+                                        : guardPhase === "thaw" ? thawFrost : guardFrost
     // The frost jumped without a sweep (reduce motion or unfocused): the
     // overlay crossfades from the previous amount if the window is live.
     signal frostJumped(real from)
@@ -127,10 +134,11 @@ QtObject {
                 frostJumped(from)
             return
         }
+        // guardFrost holds where the sweep or hold stopped; the blend starts
+        // there (progress 0 before the phase flips, so nothing steps).
+        thawProgress = 0
         guardPhase = "thaw"
-        thawAnim.from = guardFrost
-        thawAnim.to = idleFrost
-        thawAnim.start()
+        thawAnim.restart()
     }
     readonly property SequentialAnimation sweepAnim: SequentialAnimation {
         NumberAnimation {
@@ -144,7 +152,8 @@ QtObject {
         }
     }
     readonly property NumberAnimation thawAnim: NumberAnimation {
-        target: ambient; property: "guardFrost"; duration: 2500; easing.type: Easing.InOutSine
+        target: ambient; property: "thawProgress"; from: 0; to: 1
+        duration: 2500; easing.type: Easing.InOutSine
         onFinished: ambient.guardPhase = "none"
     }
 
@@ -200,6 +209,7 @@ QtObject {
         dormantMix = dormant ? 1 : 0
         sweepAnim.stop()
         thawAnim.stop()
+        thawProgress = 0
         guardFrost = guard ? heldAmount : 0
         guardPhase = guard ? "held" : "none"
     }

@@ -254,7 +254,8 @@ def _available(name: str, snap: Snapshot) -> bool:
         "gpu": snap.gpu is not None,
         "hot": hottest(snap) is not None,
         "rpm": snap.rpm is not None,
-        "profile": True,
+        # An empty id means "not known yet": never rendered (no "Unknown").
+        "profile": bool(snap.profile),
     }
     return have.get(name, False)
 
@@ -298,22 +299,27 @@ class FrostVoice:
 
     def _effective(self, snap: Snapshot, now: float) -> str:
         """Base situation, overlaid with the timed ones."""
-        first = self._last_profile is None
-        if not first and snap.profile != self._last_profile:
-            self._profile_until = now + PROFILE_SECONDS
-        self._last_profile = snap.profile
-        if self._last_guard and not snap.guard:
-            self._recovered_until = now + RECOVERED_SECONDS
-        self._last_guard = snap.guard
-        if snap.connected and self._greet_until is None:
-            self._greet_until = now + GREETING_SECONDS
+        # Transitions are tracked on connected snapshots only: a disconnected
+        # one carries the last (stale) reading, which says nothing new.
+        if snap.connected:
+            # An empty profile id is "not known yet": never a change, and
+            # never the baseline a later real id is compared against.
+            if snap.profile:
+                if self._last_profile is not None and snap.profile != self._last_profile:
+                    self._profile_until = now + PROFILE_SECONDS
+                self._last_profile = snap.profile
+            if self._last_guard and not snap.guard:
+                self._recovered_until = now + RECOVERED_SECONDS
+            self._last_guard = snap.guard
+            if self._greet_until is None:
+                self._greet_until = now + GREETING_SECONDS
 
         self._base = situation(snap, self._base)
         if self._base in ("disconnected", "guard"):
             return self._base
         if now < self._recovered_until:
             return "recovered"
-        if now < self._profile_until:
+        if now < self._profile_until and snap.profile:
             return "profile"
         if self._greet_until is not None and now < self._greet_until:
             return "greeting"

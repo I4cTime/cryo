@@ -210,3 +210,127 @@ def test_missing_qtmultimedia_degrades_visibly(qapp, tmp_path, monkeypatch):
         QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
         qInstallMessageHandler(previous)
     assert messages == []
+
+
+# -- recovering from "unavailable" -------------------------------------------
+
+FAKE_BANK = (
+    "import QtQuick\n"
+    "QtObject {{\n"
+    "    property string soundSet\n"
+    "    property real volume\n"
+    "    property bool ready: {ready}\n"
+    "    property string failed: \"{failed}\"\n"
+    "    property var plays: []\n"
+    "    signal updated()\n"
+    "    function play(name) {{ plays = plays.concat([name]) }}\n"
+    "}}\n"
+)
+
+
+@pytest.fixture
+def banks(gui, tmp_path):
+    """Sound on (not a dry run) against fake banks: nothing touches the
+    audio backend. `use(kind)` points Sfx at one: "broken" (no output),
+    "loading" (output, effects still loading) or "working"."""
+    from PySide6.QtCore import QUrl
+
+    sources = {}
+    for kind, ready, failed in (("broken", "false", "no audio output device"),
+                                ("loading", "false", ""), ("working", "true", "")):
+        path = tmp_path / f"{kind}.qml"
+        path.write_text(FAKE_BANK.format(ready=ready, failed=failed))
+        sources[kind] = QUrl.fromLocalFile(str(path)).toString()
+    sfx, prefs = gui.singleton("Sfx"), gui.singleton("Prefs")
+    played: list[str] = []
+    sfx.played.connect(played.append)
+
+    def use(kind: str) -> None:
+        sfx.setProperty("_bankSource", sources[kind])
+
+    def cooldown_over() -> None:
+        sfx.setProperty("_failedAt", sfx.property("_failedAt") - sfx.property("retryMs") - 1)
+
+    use("broken")
+    prefs.setProperty("soundEnabled", True)
+    gui.sfx, gui.played, gui.use, gui.cooldown_over = sfx, played, use, cooldown_over
+    try:
+        yield gui
+    finally:
+        prefs.setProperty("soundEnabled", False)
+        spin(sfx.property("closeDelayMs") + 50)
+        assert sfx.property("_bank") is None
+
+
+def _bank_plays(sfx) -> list:
+    return sfx.property("_bank").property("plays").toVariant()
+
+
+def test_a_failing_bank_marks_sound_unavailable(banks):
+    sfx = banks.sfx
+    assert sfx.property("state") == "unavailable" and sfx.property("available") is False
+    assert sfx.property("reason") == "no audio output device"
+    assert sfx.property("_bank") is None
+    assert sfx.property("_failedAt") > 0
+    assert banks.messages == []
+
+
+def test_plays_inside_the_cooldown_do_not_retry(banks):
+    sfx = banks.sfx
+    failed_at = sfx.property("_failedAt")
+    banks.use("working")                      # an output exists now, but it is too soon
+    for cue in ("tap", "mode", "freeze"):
+        banks.call(sfx, "play", cue)
+    assert banks.played == ["tap", "mode", "freeze"]
+    assert sfx.property("_bank") is None
+    assert sfx.property("state") == "unavailable"
+    assert sfx.property("_failedAt") == failed_at
+    assert banks.messages == []
+
+
+def test_a_play_after_the_cooldown_retries_and_recovers(banks):
+    sfx = banks.sfx
+    # still no output: the retry fails and starts a new cooldown
+    banks.cooldown_over()
+    stale = sfx.property("_failedAt")
+    banks.call(sfx, "play", "tap")
+    assert sfx.property("state") == "unavailable" and sfx.property("_bank") is None
+    assert sfx.property("_failedAt") > stale
+    # an output, effects still loading: Settings keeps the unavailable line
+    banks.use("loading")
+    banks.cooldown_over()
+    banks.call(sfx, "play", "mode")
+    assert sfx.property("_bank") is not None
+    assert sfx.property("state") == "unavailable" and sfx.property("available") is False
+    assert _bank_plays(sfx) == []
+    sfx.property("_bank").setProperty("ready", True)
+    banks.call(sfx, "_bankState")              # the bank's updated() signal
+    assert sfx.property("state") == "ready" and sfx.property("available") is True
+    assert sfx.property("reason") == ""
+    assert _bank_plays(sfx) == ["mode"]        # the cue that triggered the retry
+    spin(GAP)
+    banks.call(sfx, "play", "tap")
+    assert _bank_plays(sfx) == ["mode", "tap"]
+    assert banks.played == ["tap", "mode", "tap"]
+    assert banks.messages == []
+
+
+def test_a_retry_straight_to_ready_plays_the_cue(banks):
+    sfx = banks.sfx
+    banks.use("working")
+    banks.cooldown_over()
+    banks.call(sfx, "play", "connect")
+    assert sfx.property("state") == "ready"
+    assert _bank_plays(sfx) == ["connect"]
+    assert banks.messages == []
+
+
+def test_dry_run_never_retries(banks):
+    sfx = banks.sfx
+    sfx.setProperty("dryRun", True)
+    banks.use("working")
+    banks.cooldown_over()
+    banks.call(sfx, "play", "tap")
+    assert banks.played == ["tap"]
+    assert sfx.property("_bank") is None
+    assert banks.messages == []

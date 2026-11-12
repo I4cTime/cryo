@@ -111,7 +111,16 @@ QtObject {
         { name: "Ember", color: "#FF6B4A" },
         { name: "Rose", color: "#FF5470" }
     ]
-    readonly property string styleName: styles[Prefs.style] !== undefined ? Prefs.style : "cryo"
+    // A style name is valid only if it is in styleNames (own keys of
+    // `styles`): `styles[name] !== undefined` would accept "toString",
+    // "constructor" or "__proto__" from a hand-edited settings file.
+    function resolveStyle(name) {
+        return styleNames.indexOf(name) >= 0 ? name : "cryo"
+    }
+    function styleFor(name) {
+        return styles[resolveStyle(name)]
+    }
+    readonly property string styleName: resolveStyle(Prefs.style)
     readonly property var s: styles[styleName]
     // Changes whenever anything a Canvas painted could change; canvases
     // repaint on it (they do not re-run bindings by themselves).
@@ -248,7 +257,7 @@ QtObject {
     }
     // The accent a style draws with, given the current override.
     function accentFor(name) {
-        const st = styles[name] !== undefined ? styles[name] : styles.cryo
+        const st = styleFor(name)
         return accentOverridden ? readableOn(Prefs.accent, st.panel) : Qt.color(st.accent)
     }
     // Gauge colour by temperature: accent while cool, accent2 under load,

@@ -18,9 +18,16 @@ import QtQuick
 // ready, if that is within `pendingMs`. Turning sound off keeps the bank for
 // `closeDelayMs`, so the switch's own "toggle_off" is heard to the end.
 //
-// Test hook: with `dryRun` true nothing is created or played, but `played`
+// Unavailable is not final while sound stays on: an output can appear later
+// (session autostart before PipeWire, a headset plugged in after). The next
+// accepted cue at least `retryMs` after the last failed attempt builds the
+// bank again; no timer polls and nothing exists while idle. Until a retry
+// is ready, `state` stays "unavailable" (Settings keeps saying so).
+//
+// Test hooks: with `dryRun` true nothing is created or played, but `played`
 // still fires for every accepted cue, so tests and the tour can assert the
-// triggers without making a sound.
+// triggers without making a sound. `_bankSource` names the bank component
+// (tests point it at a fake bank).
 QtObject {
     id: sfx
 
@@ -37,11 +44,15 @@ QtObject {
     readonly property int minGapMs: 60
     readonly property int pendingMs: 1500
     readonly property int closeDelayMs: 450
+    readonly property int retryMs: 30000
     signal played(string name)
 
     property string _state: "off"
     property string _reason: ""
+    property string _bankSource: "SfxBank.qml"
     property var _bank: null
+    property real _failedAt: 0           // Date.now() of the last failed attempt
+    property bool _retrying: false       // a retry bank is loading (state stays unavailable)
     property var _last: ({})
     property string _pending: ""
     property real _pendingAt: 0
@@ -58,11 +69,15 @@ QtObject {
             return
         _last[name] = now
         played(name)
+        if (_bank === null && _state === "unavailable" && _wanted && now - _failedAt >= retryMs) {
+            _retrying = true
+            _open()
+        }
         if (_bank === null)
             return
         if (_state === "ready") {
             _bank.play(name)
-        } else if (_state === "loading") {
+        } else {                         // loading, or a retry still loading
             _pending = name
             _pendingAt = now
         }
@@ -87,7 +102,7 @@ QtObject {
     function _open() {
         if (_bank !== null)
             return
-        const component = Qt.createComponent("SfxBank.qml")
+        const component = Qt.createComponent(_bankSource)
         if (component.status !== Component.Ready) {
             _fail(component.errorString().trim() || "QtMultimedia did not load")
             return
@@ -101,8 +116,10 @@ QtObject {
             return
         }
         _bank = bank
-        _reason = ""
-        _state = "loading"
+        if (!_retrying) {
+            _reason = ""
+            _state = "loading"
+        }
         bank.updated.connect(_bankState)
         _bankState()
     }
@@ -113,8 +130,15 @@ QtObject {
             _fail(_bank.failed)
             return
         }
-        _state = _bank.ready ? "ready" : "loading"
-        if (_state === "ready" && _pending !== "") {
+        if (!_bank.ready) {
+            if (!_retrying)
+                _state = "loading"
+            return
+        }
+        _retrying = false
+        _reason = ""
+        _state = "ready"
+        if (_pending !== "") {
             if (Date.now() - _pendingAt <= pendingMs)
                 _bank.play(_pending)
             _pending = ""
@@ -125,15 +149,18 @@ QtObject {
         _close()
         _reason = why
         _state = "unavailable"
+        _failedAt = Date.now()
     }
     function _close() {
         _closeLater.stop()
+        _retrying = false
         _pending = ""
         if (_bank !== null) {
             _bank.destroy()
             _bank = null
         }
-        // An unavailable verdict stands until sound is turned on again.
+        // An unavailable verdict stands until sound is turned on again or a
+        // retry (see play) comes up ready.
         if (_state !== "unavailable" || _wanted)
             _state = "off"
     }

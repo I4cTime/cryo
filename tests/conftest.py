@@ -71,6 +71,38 @@ def spin(ms: int) -> None:
     loop.exec()
 
 
+def wait_until(cond, timeout_ms: int = 5000, step_ms: int = 5) -> bool:
+    """Run the event loop until `cond()` holds; False after `timeout_ms`.
+    Animation tests poll with this instead of a fixed spin, so a slow
+    runner waits longer instead of catching an animation at the wrong time."""
+    import time
+
+    deadline = time.monotonic() + timeout_ms / 1000
+    while not cond():
+        if time.monotonic() > deadline:
+            return False
+        spin(step_ms)
+    return True
+
+
+def sample_until(read, cond, timeout_ms: int = 8000, step_ms: int = 5) -> list:
+    """Values of `read()` taken every `step_ms` until `cond()` holds (the
+    last sample is taken once it does). Fails the test on timeout."""
+    import time
+
+    deadline = time.monotonic() + timeout_ms / 1000
+    samples = [read()]
+    while not cond():
+        assert time.monotonic() <= deadline, f"timed out after {len(samples)} samples"
+        spin(step_ms)
+        samples.append(read())
+    return samples
+
+
+def largest_step(samples: list) -> float:
+    return max((abs(b - a) for a, b in zip(samples, samples[1:])), default=0.0)
+
+
 class GuiHarness:
     """The real Main.qml loaded offscreen against a paused DemoDaemon.
     `messages` collects every Qt warning or error emitted meanwhile."""

@@ -200,3 +200,27 @@ def test_frost_ink_reads_on_every_style(gui):
     for name, style in _styles(gui).items():
         for ground in ("panel", "bg"):
             assert contrast(style["frostInk"], style[ground]) >= 3.0, (name, ground)
+
+
+@pytest.mark.parametrize("bad", ["toString", "constructor", "__proto__", "", "CRYO", "nope"])
+def test_unknown_style_names_resolve_to_cryo(gui, bad):
+    """Only the listed style names count: a settings file saying
+    style=toString (an Object property) must not blank every token."""
+    from PySide6.QtCore import Q_ARG, Q_RETURN_ARG, QMetaObject
+
+    from conftest import spin
+
+    theme, prefs = gui.singleton("Theme"), gui.singleton("Prefs")
+    cryo = _styles(gui)["cryo"]
+    prefs.setProperty("style", "glacier")
+    spin(20)
+    prefs.setProperty("style", bad)
+    spin(30)
+    assert theme.property("styleName") == "cryo"
+    for token in ("bg", "panel", "fg", "frost"):
+        assert theme.property(token).name().upper() == cryo[token].upper(), token
+    assert theme.property("accent").name().upper() == cryo["accent"].upper()
+    accent = QMetaObject.invokeMethod(theme, "accentFor", Q_RETURN_ARG("QVariant"), Q_ARG("QVariant", bad))
+    assert accent.name().upper() == cryo["accent"].upper()
+    assert gui.window.property("color").name().upper() == cryo["bg"].upper()
+    assert gui.messages == []
