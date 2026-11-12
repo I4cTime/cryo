@@ -42,10 +42,22 @@ ApplicationWindow {
     // Heat-driven washes (static when effects are off).
     Backdrop {}
 
+    // Sound cues for machine events (mode, guard, connection, errors).
+    SoundWiring {}
+
+    // Home and Settings crossfade (160 ms) when motion is allowed; with
+    // reduce motion or an unfocused window the switch is instant.
+    readonly property int pageFadeMs: 160
+
     Flickable {
         objectName: "scroller"
         anchors.fill: parent
-        visible: root.page === "home"
+        opacity: root.page === "home" ? 1 : 0
+        visible: opacity > 0
+        Behavior on opacity {
+            enabled: Ambient.motion
+            NumberAnimation { duration: root.pageFadeMs; easing.type: Easing.OutCubic }
+        }
         contentHeight: content.height + 40
         clip: true
 
@@ -69,10 +81,20 @@ ApplicationWindow {
     }
 
     Loader {
+        id: settingsLoader
         objectName: "settingsLoader"
         anchors.fill: parent
-        active: root.page === "settings"
+        // Stays loaded until it has faded out.
+        active: root.page === "settings" || opacity > 0
+        opacity: root.page === "settings" ? 1 : 0
+        visible: opacity > 0
+        focus: root.page === "settings"
+        Behavior on opacity {
+            enabled: Ambient.motion
+            NumberAnimation { duration: root.pageFadeMs; easing.type: Easing.OutCubic }
+        }
         sourceComponent: SettingsPage { onBack: root.page = "home" }
+        onLoaded: item.forceActiveFocus()
     }
 
     // The frost map runs past the window edge by this much, so the corner

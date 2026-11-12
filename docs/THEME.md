@@ -68,20 +68,60 @@ Fixed tokens (outside the styles, never themed):
 | `ledCyan`, `ledViolet` | Real LED colours: the keyboard's quantum effect and the default lighting colour. They never follow the style or the accent. |
 
 Derived and other members: `styleName` (the active style), `styleNames`,
-`styleLabels`, `accentOverridden`, `revision` (changes on any style or accent
+`styleLabels`, `styleBlurbs` (one line per style for the Settings picker),
+`accentChoices`, `accentOverridden`, `revision` (changes on any style or accent
 change; a `Canvas` repaints on `onRevisionChanged`, because canvases do not
 re-run bindings), `uiFont`, `monoFont`, `profileIcons`, `profileLabels`,
 `profileShortLabels`, and the helpers `mix(a, b, f)` (opaque),
-`blend(a, b, f)` (with alpha) and `tempColor(t)`.
+`blend(a, b, f)` (with alpha), `tempColor(t)`, and the accent helpers
+`readableOn(c, background)`, `accentFor(style)`, `contrast(a, b)`,
+`luminance(c)` (see below).
 
 ## The accent override
 
-`Prefs.accent` is `""` (use the style's accent) or `"#RRGGBB"`. When it holds
-a valid colour, `Theme.accent` returns it; anything else is ignored and the
-style's accent applies. Nothing else changes with the override: secondary
-colours, status colours, frost and the LED tokens stay as the style defines
-them. A light style needs a dark enough accent for text: check contrast on
-`panel` when picking override swatches.
+`Prefs.accent` is `""` (use the style's accent) or `"#RRGGBB"`. Anything that
+is not a valid colour is ignored and the style's accent applies. Nothing else
+changes with the override: secondary colours, status colours, frost and the
+LED tokens stay as the style defines them.
+
+The Settings page offers the choices in `Theme.accentChoices` (data, one
+`{ name, color }` per swatch) plus "Style default":
+
+| Name | Colour |
+|---|---|
+| Cyan | `#00D1FF` |
+| Ice | `#9BE7FF` |
+| Aurora | `#3DF5B4` |
+| Violet | `#8A5CFF` |
+| Magenta | `#FF4FD8` |
+| Amber | `#FFB300` |
+| Ember | `#FF6B4A` |
+| Rose | `#FF5470` |
+
+`Prefs.accent` always stores the colour as picked. What `Theme.accent` draws
+with is derived per style by `Theme.readableOn(colour, panel)`, a pure
+function:
+
+1. If the colour already has at least 4.5:1 contrast (WCAG 2, text grade)
+   on the style's `panel`, it is used unchanged. Every choice passes on the
+   dark styles, so there the override is exact.
+2. Otherwise hue and saturation are kept and only the HSL lightness moves:
+   toward black when the panel is light (luminance above 0.18), toward white
+   when it is dark. Lightness moves every channel the same way, so contrast
+   is monotonic in it; a 24-step bisection finds the lightness nearest the
+   original that reaches 4.5:1 (aiming at 4.55 to survive 8-bit rounding).
+
+So on Glacier a pale pick such as Ice or Aurora is drawn as a deeper shade of
+the same hue, and switching back to a dark style gives the original colour
+back. The Settings swatches show the derived colour, and a line under them
+says when the active style deepened (or lightened) the pick.
+`Theme.accentFor(style)` gives the accent a style would draw with under the
+current override (the style cards' previews use it), and
+`Theme.contrast(a, b)` / `Theme.luminance(c)` are the WCAG helpers.
+
+`tests/test_gui_settings.py` checks, through the engine, that for every
+style and every choice (and the style default) the drawn accent has at least
+4.5:1 on that style's `panel` and 3:1 on its `bg`.
 
 Contrast: in every style `fg`, `muted`, `accent`, `accent2Text`, `hot` and
 `warn` reach WCAG AA (4.5:1) as text on `panel`.

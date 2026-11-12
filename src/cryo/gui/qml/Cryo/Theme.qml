@@ -92,6 +92,25 @@ QtObject {
     readonly property var styleLabels: ({
         "cryo": "Cryo", "aurora": "Aurora", "glacier": "Glacier", "blackout": "Blackout"
     })
+    // One line per style for the Settings style picker.
+    readonly property var styleBlurbs: ({
+        "cryo": "Deep black, cyan and violet.",
+        "aurora": "Polar night, green light.",
+        "glacier": "Light. Pale ice and navy.",
+        "blackout": "Pure black, minimal glow."
+    })
+    // Accent override choices (Settings). Data, not theme: Prefs.accent
+    // stores the raw colour and Theme derives what is drawn (readableOn).
+    readonly property var accentChoices: [
+        { name: "Cyan", color: "#00D1FF" },
+        { name: "Ice", color: "#9BE7FF" },
+        { name: "Aurora", color: "#3DF5B4" },
+        { name: "Violet", color: "#8A5CFF" },
+        { name: "Magenta", color: "#FF4FD8" },
+        { name: "Amber", color: "#FFB300" },
+        { name: "Ember", color: "#FF6B4A" },
+        { name: "Rose", color: "#FF5470" }
+    ]
     readonly property string styleName: styles[Prefs.style] !== undefined ? Prefs.style : "cryo"
     readonly property var s: styles[styleName]
     // Changes whenever anything a Canvas painted could change; canvases
@@ -114,8 +133,11 @@ QtObject {
     readonly property color fg: s.fg
     readonly property color muted: s.muted
     // The accent override replaces this one token and nothing else.
+    // An override is drawn as readableOn(override, panel): unchanged when it
+    // already reads as text on the style's panel, else moved toward black
+    // (light styles) or white (dark ones) until it does. See docs/THEME.md.
     readonly property bool accentOverridden: /^#[0-9A-Fa-f]{6}$/.test(Prefs.accent)
-    readonly property color accent: accentOverridden ? Prefs.accent : s.accent
+    readonly property color accent: accentFor(styleName)
     readonly property color styleAccent: s.accent
     readonly property color accent2: s.accent2
     readonly property color accent2Text: s.accent2Text
@@ -183,6 +205,47 @@ QtObject {
     function blend(a, b, f) {
         return Qt.rgba(a.r + (b.r - a.r) * f, a.g + (b.g - a.g) * f,
                        a.b + (b.b - a.b) * f, a.a + (b.a - a.a) * f)
+    }
+    // WCAG 2 relative luminance and contrast ratio.
+    function _linear(v) {
+        return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4)
+    }
+    function luminance(c) {
+        const k = Qt.color(c)
+        return 0.2126 * _linear(k.r) + 0.7152 * _linear(k.g) + 0.0722 * _linear(k.b)
+    }
+    function contrast(a, b) {
+        const la = luminance(a), lb = luminance(b)
+        return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05)
+    }
+    // `c` as text on `background` (at least 4.5:1): unchanged when it
+    // already reads, else the same hue and saturation at the HSL lightness
+    // nearest the original that does (darker on a light background, lighter
+    // on a dark one). Lightness moves every channel the same way, so
+    // contrast is monotonic in it and a bisection finds the edge. Pure.
+    readonly property real textContrast: 4.5
+    function readableOn(c, background) {
+        const k = Qt.color(c)
+        const target = theme.textContrast + 0.05      // margin for 8-bit rounding
+        if (contrast(k, background) >= target)
+            return k
+        const darken = luminance(background) > 0.18
+        const h = Math.max(0, k.hslHue), sat = k.hslSaturation
+        let ok = darken ? 0 : 1                       // always readable
+        let bad = k.hslLightness
+        for (let i = 0; i < 24; i++) {
+            const mid = (ok + bad) / 2
+            if (contrast(Qt.hsla(h, sat, mid, 1), background) >= target)
+                ok = mid
+            else
+                bad = mid
+        }
+        return Qt.hsla(h, sat, ok, 1)
+    }
+    // The accent a style draws with, given the current override.
+    function accentFor(name) {
+        const st = styles[name] !== undefined ? styles[name] : styles.cryo
+        return accentOverridden ? readableOn(Prefs.accent, st.panel) : Qt.color(st.accent)
     }
     // Gauge colour by temperature: accent while cool, accent2 under load,
     // amber as it warms, red from 85 °C (where the number turns red too).

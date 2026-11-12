@@ -3,6 +3,9 @@ import QtQuick.Controls.Basic
 
 Switch {
     id: sw
+    opacity: enabled ? 1.0 : 0.4
+    // `toggled` fires only for user input, never for a binding update.
+    onToggled: Sfx.play(sw.checked ? "toggle_on" : "toggle_off")
     indicator: Rectangle {
         implicitWidth: 40; implicitHeight: 22; radius: 11
         x: sw.leftPadding

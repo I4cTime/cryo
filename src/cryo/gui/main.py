@@ -11,6 +11,7 @@ from PySide6.QtGui import QAction, QColor, QIcon, QPainter, QPixmap
 from PySide6.QtQml import QQmlApplicationEngine
 from PySide6.QtWidgets import QApplication, QMenu, QSystemTrayIcon
 
+from cryo import __version__
 from cryo.gui.bridge import Daemon
 from cryo.gui.icons import PROVIDER_ID, IconProvider
 
@@ -58,7 +59,7 @@ def _brand_icon(name: str) -> QIcon | None:
 def build_engine(daemon: Daemon, qml_file: Path | None = None) -> QQmlApplicationEngine:
     """The QML engine every entry point uses (app, tour, tests): the `Cryo`
     module on the import path, the bridge as the `daemon` context property,
-    Main.qml loaded. Check `engine.rootObjects()` for success, and delete
+    the package version as `appVersion`, Main.qml loaded. Check `engine.rootObjects()` for success, and delete
     the engine before the daemon it references.
 
     Sets the organization name and domain the Prefs singleton (QtCore
@@ -70,6 +71,7 @@ def build_engine(daemon: Daemon, qml_file: Path | None = None) -> QQmlApplicatio
     engine.addImportPath(str(QML_DIR))
     engine.addImageProvider(PROVIDER_ID, IconProvider())
     engine.rootContext().setContextProperty("daemon", daemon)
+    engine.rootContext().setContextProperty("appVersion", __version__)
     engine.load(QUrl.fromLocalFile(str(qml_file or QML_DIR / "Main.qml")))
     return engine
 

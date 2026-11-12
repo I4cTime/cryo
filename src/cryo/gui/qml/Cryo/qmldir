@@ -32,3 +32,8 @@ Automation 1.0 Automation.qml
 Lighting 1.0 Lighting.qml
 Footer 1.0 Footer.qml
 SettingsPage 1.0 SettingsPage.qml
+SoundWiring 1.0 SoundWiring.qml
+SettingRow 1.0 SettingRow.qml
+StyleCard 1.0 StyleCard.qml
+AccentPicker 1.0 AccentPicker.qml
+Segmented 1.0 Segmented.qml
