@@ -1,12 +1,14 @@
 import QtQuick
 import QtQuick.Controls.Basic
 
-// A bare icon you can click (header gear, Settings back button).
+// An icon you can click: bare (header gear) or `boxed` on a panel-coloured
+// tile (the Settings back button, which sits where frost gathers).
 Item {
     id: button
     property string name
     property string tooltip
     property real size: 18
+    property bool boxed: false
     property color color: area.containsMouse ? Theme.fg : Theme.muted
     signal clicked()
     implicitWidth: size + 12
@@ -15,7 +17,9 @@ Item {
     Rectangle {
         anchors.fill: parent
         radius: 8
-        color: area.containsMouse ? Theme.track : "transparent"
+        color: area.containsMouse ? Theme.track : button.boxed ? Theme.panel : "transparent"
+        border.width: button.boxed ? 1 : 0
+        border.color: area.containsMouse ? Theme.muted : Theme.panelBorder
     }
     Icon {
         anchors.centerIn: parent
@@ -28,7 +32,10 @@ Item {
         anchors.fill: parent
         hoverEnabled: true
         cursorShape: Qt.PointingHandCursor
-        onClicked: button.clicked()
+        onClicked: {
+            Sfx.play("tap")
+            button.clicked()
+        }
     }
     ToolTip.visible: area.containsMouse && button.tooltip !== ""
     ToolTip.delay: 500

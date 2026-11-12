@@ -9,10 +9,15 @@ from PySide6.QtCore import Property, QObject, QTimer, Signal, Slot
 from PySide6.QtNetwork import QLocalSocket
 
 from cryo import paths
+from cryo.gui.voice import FrostVoice, Line, Snapshot
 
 log = logging.getLogger(__name__)
 
 HISTORY_LEN = 120  # samples kept for the sparklines (~2 min at 1 Hz)
+# Frost's timed lines (greeting, recovered, profile acknowledgement) and its
+# dwell rotation need time to pass even when no telemetry arrives
+# (disconnected), so the line is also re-evaluated on this slow timer.
+FROST_REEVALUATE_MS = 5000
 
 # Shown until the daemon's real capability block arrives (or against a
 # pre-0.2 daemon that doesn't send one): the classic m18 layout.
@@ -38,12 +43,25 @@ class Daemon(QObject):
     capabilitiesChanged = Signal()
     configChanged = Signal()
     errorOccurred = Signal(str)
+    frostLineChanged = Signal()
 
     # True only for the scripted stand-in (cryo.gui.demo.DemoDaemon).
     DEMO = False
 
-    def __init__(self, parent: QObject | None = None) -> None:
+    def __init__(self, parent: QObject | None = None, voice: FrostVoice | None = None) -> None:
         super().__init__(parent)
+        # Frost's one-line status (cryo.gui.voice): rule-based and local,
+        # re-evaluated on every telemetry frame, on connect/disconnect and
+        # every FROST_REEVALUATE_MS. Set up before the transport, which may
+        # push a first frame straight away (DemoDaemon does).
+        self._voice = voice or FrostVoice()
+        # "Standing by." until the first frame, connection or timer tick.
+        self._frost: Line = self._voice.line
+        self.connectedChanged.connect(self._update_frost)
+        self._frost_timer = QTimer(self)
+        self._frost_timer.setInterval(FROST_REEVALUATE_MS)
+        self._frost_timer.timeout.connect(self._update_frost)
+        self._frost_timer.start()
         self._connected = False
         self._telemetry: dict = {}
         self._capabilities: dict = DEFAULT_CAPABILITIES
@@ -128,6 +146,44 @@ class Daemon(QObject):
             self._capabilities = caps
             self.capabilitiesChanged.emit()
         self.telemetryChanged.emit()
+        self._update_frost()
+
+    # -- Frost's voice -------------------------------------------------------
+
+    def frost_snapshot(self) -> Snapshot:
+        """What Frost knows about the machine right now."""
+        t = self._telemetry
+        thermals = bool(self._capabilities.get("thermals", True))
+
+        def temp(key: str) -> float | None:
+            value = t.get(key)
+            return float(value) if thermals and value is not None else None
+
+        ac = t.get("ac")
+        if not self._capabilities.get("ac_supply", True):
+            ac = None
+        rpms = [int(f["rpm"]) for f in t.get("fans") or [] if f.get("rpm") is not None]
+        return Snapshot(
+            connected=self._connected,
+            cpu=temp("cpu_temp"),
+            gpu=temp("gpu_temp"),
+            guard=bool(t.get("guard")),
+            gaming=bool(t.get("gaming")),
+            ac=None if ac is None else bool(ac),
+            profile=str(t.get("profile") or ""),
+            rpm=max(rpms) if thermals and rpms else None,
+        )
+
+    def set_voice(self, voice: FrostVoice) -> None:
+        """Swap in another FrostVoice (tests: a seeded rng and a fake clock)."""
+        self._voice = voice
+        self._update_frost()
+
+    def _update_frost(self) -> None:
+        line = self._voice.update(self.frost_snapshot())
+        if line != self._frost:
+            self._frost = line
+            self.frostLineChanged.emit()
 
     def _on_cmd_ready_read(self) -> None:
         self._cmd_buffer += bytes(self._cmd.readAll().data())
@@ -163,6 +219,16 @@ class Daemon(QObject):
     @Property(bool, notify=connectedChanged)
     def connected(self) -> bool:
         return self._connected
+
+    @Property(str, notify=frostLineChanged)
+    def frostLine(self) -> str:
+        """Frost's status line, rendered with live numbers."""
+        return self._frost.text
+
+    @Property(str, notify=frostLineChanged)
+    def frostLineKey(self) -> str:
+        """Which template the line uses; changes only when the wording does."""
+        return self._frost.key
 
     @Property(str, notify=telemetryChanged)
     def profile(self) -> str:

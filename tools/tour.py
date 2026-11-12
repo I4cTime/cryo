@@ -171,6 +171,99 @@ def _curve_editor(tour: "Tour") -> None:
     tour.scroll_to(tour.find_object("curveBody"))
 
 
+# ---- piece G: Settings, sound and Frost's line -------------------------------
+# prepare_settings_piece() runs once at startup (run_inner): Sfx.dryRun on, so
+# the tour never makes a sound (cues still fire Sfx.played); Frost's voice gets
+# a seeded rng and a clock only the scenes move, so a line in a shot is the
+# same on every run; and every reset also puts the Settings page back at the
+# top with sound off (the page stays loaded while it fades out).
+
+class _FrostClock:
+    def __init__(self) -> None:
+        self.now = 0.0
+
+    def __call__(self) -> float:
+        return self.now
+
+
+FROST_CLOCK = _FrostClock()
+
+
+def _singleton(tour: "Tour", name: str):
+    from PySide6.QtQml import QJSValue
+
+    value = tour.engine.singletonInstance("Cryo", name)
+    if isinstance(value, QJSValue):
+        value = value.toQObject() if value.isQObject() else None
+    return value
+
+
+def prepare_settings_piece(tour: "Tour") -> None:
+    import random
+
+    from cryo.gui.voice import FrostVoice
+
+    sfx = _singleton(tour, "Sfx")
+    if sfx is not None:
+        sfx.setProperty("dryRun", True)
+    tour.daemon.set_voice(FrostVoice(rng=random.Random(7), clock=FROST_CLOCK))
+    plain_reset = tour.reset
+
+    def reset() -> None:
+        plain_reset()
+        prefs = _singleton(tour, "Prefs")
+        if prefs is not None:
+            prefs.setProperty("soundEnabled", False)
+        settings_scroller = tour.find_object("settingsScroller")
+        if settings_scroller is not None:
+            settings_scroller.setProperty("contentY", 0)
+
+    tour.reset = reset
+
+
+def _open_settings(tour: "Tour"):
+    tour.window.setProperty("page", "settings")
+    tour.wait(50)
+    scroller = tour.find_object("settingsScroller")
+    if scroller is None:
+        raise SystemExit("tour: no Flickable named 'settingsScroller' on the Settings page")
+    scroller.setProperty("contentY", 0)
+    return scroller
+
+
+def _scroll_settings_to(tour: "Tour", scroller, text: str) -> None:
+    tour.wait(50)
+    item = tour.find_title(text)
+    content = scroller.property("contentItem")
+    y = item.mapToItem(content, 0, 0).y() - 12
+    top = max(0.0, scroller.property("contentHeight") - scroller.height())
+    scroller.setProperty("contentY", max(0.0, min(y, top)))
+
+
+@scene("settings-sound")
+def _settings_sound(tour: "Tour") -> None:
+    tour.ramp(**IDLE)
+    _singleton(tour, "Prefs").setProperty("soundEnabled", True)
+    _scroll_settings_to(tour, _open_settings(tour), "SOUND")
+
+
+@scene("settings-about")
+def _settings_about(tour: "Tour") -> None:
+    tour.ramp(**IDLE)
+    _scroll_settings_to(tour, _open_settings(tour), "ABOUT")
+
+
+@scene("footer")
+def _footer(tour: "Tour") -> None:
+    FROST_CLOCK.now += 600          # past greeting, profile and recovered lines
+    tour.ramp(**IDLE)
+    tour.wait(50)
+    top = max(0.0, tour.scroller.property("contentHeight") - tour.scroller.height())
+    tour.scroller.setProperty("contentY", top)
+
+# ---- end of piece G ----------------------------------------------------------
+
+
 # -- the driver ----------------------------------------------------------------
 
 class Tour:
@@ -421,6 +514,8 @@ def run_inner(args: argparse.Namespace) -> int:
 
     tour = Tour(app, engine, daemon, window)
     tour.ambient = singleton("Ambient") if forced else None
+    if forced:                      # piece G: silent cues, a repeatable Frost line
+        prepare_settings_piece(tour)
     tour.wait(500)
     api = window.rendererInterface().graphicsApi()
     api_name = getattr(api, "name", str(api))
