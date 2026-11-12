@@ -69,14 +69,14 @@ QtObject {
 
     // ---- frost ----
     // Idle frost frames the window while cool and is gone by about 69 °C.
-    readonly property real idleMax: 0.40
+    readonly property real idleMax: 0.48
     readonly property real idleFade: 0.6     // heat at which idle frost is gone
-    readonly property real peakAmount: 0.95  // flash freeze overshoot
-    readonly property real heldAmount: 0.44  // frosted frame while the guard holds
+    readonly property real peakAmount: 1.0  // flash freeze overshoot
+    readonly property real heldAmount: 0.6  // frosted frame while the guard holds
     // Dormant (no daemon, no thermals) the window looks iced over and
     // asleep: a light fixed frost instead of the heat-derived one. The
     // switch eases over 600 ms when motion is allowed.
-    readonly property real dormantFrost: 0.34
+    readonly property real dormantFrost: 0.42
     property real dormantMix: 0              // 0 awake .. 1 dormant
     onDormantChanged: {
         dormantEase.stop()
@@ -104,6 +104,21 @@ QtObject {
     readonly property real frostAmount: !Prefs.effects ? 0
                                         : guardPhase === "none" ? idleFrost
                                         : guardPhase === "thaw" ? thawFrost : guardFrost
+    // Panel edges ice over with the flash freeze (Panel.qml): 0 clear, 1
+    // iced. It rises with the sweep, holds while the guard holds and thaws
+    // with the frost, from wherever it stood, so it never steps; without
+    // motion the phases jump, and so does this.
+    property real _sweepFrom: 0      // frostAmount when the sweep started
+    property real _edgeFrom: 0       // edgeIce then
+    property real _edgeAtRelease: 0  // edgeIce when the thaw started
+    readonly property real _sweepIce: {
+        const k = Math.max(0, Math.min(1, (guardFrost - _sweepFrom) / Math.max(1e-6, peakAmount - _sweepFrom)))
+        return _edgeFrom + (1 - _edgeFrom) * k
+    }
+    readonly property real edgeIce: !Prefs.effects ? 0
+                                    : guardPhase === "sweep" ? _sweepIce
+                                    : guardPhase === "held" ? 1
+                                    : guardPhase === "thaw" ? _edgeAtRelease * (1 - thawProgress) : 0
     // The frost jumped without a sweep (reduce motion or unfocused): the
     // overlay crossfades from the previous amount if the window is live.
     signal frostJumped(real from)
@@ -119,6 +134,8 @@ QtObject {
                 frostJumped(from)
             return
         }
+        _edgeFrom = edgeIce
+        _sweepFrom = from
         guardFrost = from
         guardPhase = "sweep"
         sweepAnim.start()
@@ -137,6 +154,7 @@ QtObject {
         // guardFrost holds where the sweep or hold stopped; the blend starts
         // there (progress 0 before the phase flips, so nothing steps).
         thawProgress = 0
+        _edgeAtRelease = edgeIce
         guardPhase = "thaw"
         thawAnim.restart()
     }

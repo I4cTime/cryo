@@ -21,11 +21,6 @@ FocusScope {
     readonly property bool soundUsable: Prefs.soundEnabled && Sfx.available
     // Sub-controls line up with the row titles; the row icons form a gutter.
     readonly property real inset: 28              // SettingRow.gutter
-    // The close button in page coordinates: the window frost keeps clear
-    // of it (Main.qml), as it does of the gear on the home page.
-    readonly property rect clearRect: Qt.rect(content.x + settingsHeader.x + closeButton.x,
-                                              content.y + settingsHeader.y + closeButton.y - scroller.contentY,
-                                              closeButton.width, closeButton.height)
 
     component Divider: Rectangle {
         Layout.fillWidth: true

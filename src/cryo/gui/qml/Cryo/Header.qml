@@ -9,16 +9,6 @@ RowLayout {
     signal settingsClicked()
     Layout.fillWidth: true
     spacing: 12
-    // The status badges, the connection dot and the gear, in header
-    // coordinates: the window frost keeps clear of them (Main.qml).
-    readonly property rect controlsRect: {
-        let x0 = connDot.x
-        if (gamingBadge.visible)
-            x0 = Math.min(x0, gamingBadge.x)
-        if (guardBadge.visible)
-            x0 = Math.min(x0, guardBadge.x)
-        return Qt.rect(x0, gear.y, gear.x + gear.width - x0, gear.height)
-    }
     LivingMark {
         Layout.preferredWidth: 42
         Layout.preferredHeight: 42

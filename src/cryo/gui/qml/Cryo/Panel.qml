@@ -6,22 +6,28 @@ import QtQuick.Shapes
 // A slab of ice: a vertical gradient from panelTop to panel, a facet line
 // catching the light along the top edge, one faint flat facet plane across
 // the body, and a soft drop shadow. All of it is static: it repaints only
-// when the panel resizes, the style changes, the heat moves (1 Hz at most)
-// or the pointer enters or leaves (hover glow, 150 ms).
+// when the panel resizes, the style changes, the heat moves (1 Hz at most),
+// the pointer enters or leaves (hover glow, 150 ms) or the Thermal Guard
+// freezes and thaws the window (Ambient.edgeIce).
+//
+// The fill is its own item so the style's panelOpacity can let the frost and
+// the backdrop ghost faintly through the slab; the border, the facet lines,
+// the shadow and every child stay fully opaque.
 Rectangle {
     id: panelRect
     radius: 12
+    color: "transparent"
     border.width: 1
-    border.color: Theme.mix(Theme.panelBorder, Theme.accent, 0.55 * hoverT)
-    gradient: Gradient {
-        GradientStop { position: 0.0; color: panelRect.iceTop }
-        GradientStop { position: 0.55; color: Theme.mix(panelRect.iceTop, Theme.panel, 0.8) }
-        GradientStop { position: 1.0; color: Theme.panel }
-    }
+    border.color: Theme.mix(Theme.mix(Theme.panelBorder, Theme.frostInk, 0.5 * ice),
+                            Theme.accent, 0.55 * hoverT)
     // Dark styles lift the top a breath toward the frost tint: the cold
     // light the slab carries. Light styles are already pale at the top.
     readonly property color iceTop: Theme.isLight ? Theme.panelTop
                                                   : Theme.mix(Theme.panelTop, Theme.frost, 0.035)
+    // The flash freeze ices the slab's edges (border and facet highlight
+    // lean toward frostInk) and the thaw takes it back; Ambient eases it
+    // with the frost, so it is instant without motion.
+    readonly property real ice: Ambient.edgeIce
 
     // Where the facet plane crosses the top edge, as a fraction of the
     // width (a panel with a busy left side moves it right).
@@ -46,11 +52,27 @@ Rectangle {
         color: Theme.shadow
         visible: false
     }
+    // A see-through fill (panelOpacity below 1) would show the shadow's
+    // source and the shadow itself under the slab instead of the frost, so
+    // the effect then masks the panel's own shape out of its output. The
+    // mask is the shape at the effect's padded size (MultiEffect pads by
+    // blurMax on every side and maps the mask over that area); it exists
+    // only while the fill is see-through, and renders again only on resize.
+    readonly property bool seeThrough: Theme.panelOpacity < 1
+    readonly property real shadowPad: 24        // = the effect's blurMax
+    ShaderEffectSource {
+        id: panelShadowMask
+        visible: false
+        sourceItem: panelRect.seeThrough ? panelShadowSrc : null
+        sourceRect: Qt.rect(-panelRect.shadowPad, -panelRect.shadowPad,
+                            panelRect.width + 2 * panelRect.shadowPad,
+                            panelRect.height + 2 * panelRect.shadowPad)
+    }
     MultiEffect {
         // The effect also draws its source, a panel-shaped fill in the
-        // shadow colour, hidden under the opaque panel. While the sections
-        // fade in (first-show reveal) the panel is see-through, so the whole
-        // effect settles in afterwards (Ambient.revealShadow).
+        // shadow colour, under the panel fill. While the sections fade in
+        // (first-show reveal) the panel is see-through, so the whole effect
+        // settles in afterwards (Ambient.revealShadow).
         z: -1
         opacity: Ambient.revealShadow
         visible: opacity > 0
@@ -60,8 +82,23 @@ Rectangle {
         shadowColor: Theme.mix(Theme.shadow, Theme.accent, 0.4 * panelRect.hoverT)
         shadowOpacity: Theme.shadowOpacity * (1 + 0.25 * panelRect.hoverT)
         shadowBlur: 1.0
-        blurMax: 24
+        blurMax: panelRect.shadowPad
         shadowVerticalOffset: 6
+        maskEnabled: panelRect.seeThrough
+        maskSource: panelRect.seeThrough ? panelShadowMask : null
+        maskInverted: true
+    }
+    // The fill (above the shadow, below the border and everything else).
+    Rectangle {
+        z: -1
+        anchors.fill: parent
+        radius: panelRect.radius
+        opacity: Theme.panelOpacity
+        gradient: Gradient {
+            GradientStop { position: 0.0; color: panelRect.iceTop }
+            GradientStop { position: 0.55; color: Theme.mix(panelRect.iceTop, Theme.panel, 0.8) }
+            GradientStop { position: 1.0; color: Theme.panel }
+        }
     }
 
     // The facet plane: one flat, slightly brighter (on light styles slightly
@@ -107,13 +144,14 @@ Rectangle {
 
     // Facet highlight: light caught by the top edge, brightest left of
     // centre and gone at both ends, with a softer line under it. It warms
-    // a little with the heat.
+    // a little with the heat and ices over (frostInk) in a flash freeze.
     readonly property real warmth: Ambient.dormant ? 0 : Ambient.heat
     readonly property color highlightInk: {
         const h = Theme.panelHighlight
         // dark styles: a stronger edge than the token's fill strength
         const a = Theme.isLight ? h.a : Math.min(1, h.a * 3.4)
-        return Theme.blend(Qt.alpha(h, a), Qt.alpha(Theme.warn, a), 0.32 * warmth)
+        const lit = Theme.blend(Qt.alpha(h, a), Qt.alpha(Theme.warn, a), 0.32 * warmth)
+        return Theme.blend(lit, Qt.alpha(Theme.frostInk, 0.75), ice)
     }
     Rectangle {
         x: panelRect.radius * 0.6

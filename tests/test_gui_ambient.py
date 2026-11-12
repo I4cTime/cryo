@@ -158,7 +158,7 @@ def test_reduce_motion_jumps_and_signals_a_crossfade(gui, amb):
 
 # Largest change allowed between two consecutive samples of a thaw. The
 # thaw's own slope is about 0.3/s, so even a 100 ms stall on a slow runner
-# stays well under this; the old pop to the dormant frost was 0.34.
+# stays well under this; a pop to the dormant frost would be 0.42.
 STEP = 0.06
 
 
@@ -254,4 +254,106 @@ def test_reconnect_with_a_stale_guard_does_not_freeze(gui, amb):
     assert _p(amb, "guard") is False and _p(amb, "guardPhase") == "none"
     d.feed({**d.build_frame(), "guard": False, "cpu_temp": 60.0})
     assert _p(amb, "guard") is False and _p(amb, "guardPhase") == "none"
+    assert gui.messages == []
+
+
+# -- the tuned frost and the iced panel edges -----------------------------------
+
+def test_frost_amounts_are_tuned_to_the_background_layer(gui, amb):
+    """The frost is drawn behind the content, so it may reach further in.
+    The amounts and the overflow past the window edge are tuned together
+    (docs/THEME.md): changing one changes how much of the other shows."""
+    assert _p(amb, "idleMax") == pytest.approx(0.48)
+    assert _p(amb, "dormantFrost") == pytest.approx(0.42)
+    assert _p(amb, "heldAmount") == pytest.approx(0.60)
+    assert _p(amb, "peakAmount") == pytest.approx(1.0)
+    assert (_p(amb, "dormantFrost") < _p(amb, "idleMax") < _p(amb, "heldAmount")
+            < _p(amb, "peakAmount"))
+    bleed = [gui.window.property(n) for n in ("frostBleed", "frostBleedTop", "frostBleedBottom")]
+    assert bleed == [pytest.approx(28), pytest.approx(32), pytest.approx(40)]
+
+
+def test_panel_edges_ice_with_the_flash_freeze_and_thaw_back(gui, amb):
+    d = gui.daemon
+    d.set_state(cpu_temp=90.0, gpu_temp=80.0)
+    spin(600)
+    assert _p(amb, "edgeIce") == 0
+    seen: list[float] = []
+    amb.edgeIceChanged.connect(lambda: seen.append(_p(amb, "edgeIce")))
+    d.set_state(guard=True)
+    assert _p(amb, "guardPhase") == "sweep"
+    assert wait_until(lambda: _p(amb, "guardPhase") == "held")
+    assert any(0.05 < v < 0.95 for v in seen), seen                 # eased in, not a cut
+    assert all(b >= a - 1e-6 for a, b in zip(seen, seen[1:])), seen
+    assert _p(amb, "edgeIce") == pytest.approx(1.0)
+    d.set_state(cpu_temp=60.0, gpu_temp=55.0, guard=False)
+    assert _p(amb, "edgeIce") == pytest.approx(1.0)                 # the thaw starts iced
+    thaw = sample_until(lambda: _p(amb, "edgeIce"), lambda: _p(amb, "guardPhase") == "none")
+    assert any(0.05 < v < 0.95 for v in thaw), thaw
+    assert largest_step(thaw) < STEP, thaw
+    assert _p(amb, "edgeIce") == 0
+    assert gui.messages == []
+
+
+def test_panel_edges_follow_a_release_mid_sweep_without_a_jump(gui, amb):
+    d = gui.daemon
+    d.set_state(cpu_temp=90.0, gpu_temp=80.0)
+    spin(600)
+    d.set_state(guard=True)
+    assert wait_until(lambda: 0.2 < _p(amb, "edgeIce") < 0.9)
+    before = _p(amb, "edgeIce")
+    d.set_state(guard=False)
+    assert _p(amb, "guardPhase") == "thaw"
+    assert _p(amb, "edgeIce") == pytest.approx(before, abs=1e-3)
+    assert wait_until(lambda: _p(amb, "thawProgress") > 0.3)
+    mid = _p(amb, "edgeIce")
+    d.set_state(guard=True)                                          # re-engage mid-thaw
+    assert _p(amb, "guardPhase") == "sweep"
+    assert _p(amb, "edgeIce") == pytest.approx(mid, abs=1e-3)       # no jump at the turn
+    assert wait_until(lambda: _p(amb, "guardPhase") == "held")
+    assert _p(amb, "edgeIce") == pytest.approx(1.0)
+    assert gui.messages == []
+
+
+def test_panel_edges_jump_without_motion_and_stay_clear_without_effects(gui, amb):
+    prefs = gui.singleton("Prefs")
+    prefs.setProperty("reduceMotion", True)
+    d = gui.daemon
+    d.set_state(cpu_temp=90.0, gpu_temp=80.0)
+    spin(20)
+    d.set_state(guard=True)
+    spin(5)
+    assert _p(amb, "edgeIce") == pytest.approx(1.0)
+    d.set_state(guard=False)
+    spin(5)
+    assert _p(amb, "edgeIce") == 0
+    prefs.setProperty("reduceMotion", False)
+    prefs.setProperty("effects", False)
+    d.set_state(guard=True)
+    spin(20)
+    assert _p(amb, "edgeIce") == 0
+    assert gui.messages == []
+
+
+def test_panels_read_the_edge_ice(gui, amb):
+    from PySide6.QtCore import QObject
+
+    def ink() -> str:
+        c = panel.property("highlightInk")
+        return c.name(c.NameFormat.HexArgb)
+
+    panel = gui.window.findChild(QObject, "vramPanel")
+    assert panel is not None
+    gui.singleton("Prefs").setProperty("reduceMotion", True)
+    gui.daemon.set_state(cpu_temp=90.0, gpu_temp=80.0)
+    spin(20)
+    rest = ink()
+    gui.daemon.set_state(guard=True)
+    spin(20)
+    assert panel.property("ice") == pytest.approx(1.0)
+    assert ink() != rest
+    gui.daemon.set_state(guard=False)
+    spin(20)
+    assert panel.property("ice") == 0
+    assert ink() == rest
     assert gui.messages == []

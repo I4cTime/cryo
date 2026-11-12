@@ -3,8 +3,8 @@ import QtQuick.Controls.Basic
 import QtQuick.Layouts
 import Cryo
 
-// The window: backdrop, one scrolling column (home) or the Settings view,
-// and the frost overlay above everything. Look tokens live in
+// The window: backdrop, window frost, then one scrolling column (home) or
+// the Settings view above both. Look tokens live in
 // Cryo/Theme.qml, runtime state in Cryo/Ambient.qml, preferences in
 // Cryo/Prefs.qml, every piece of UI in its own file under Cryo/.
 ApplicationWindow {
@@ -40,7 +40,52 @@ ApplicationWindow {
     Binding { target: Ambient; property: "profile"; value: daemon.profile }
 
     // Heat-driven washes (static when effects are off).
-    Backdrop {}
+    Backdrop { objectName: "backdrop" }
+
+    // Window frost, between the backdrop and the pages: every label, icon,
+    // control and panel of both pages is drawn above it, so the ice never
+    // covers anything to read or press. Its amount comes from Ambient (idle
+    // frost by heat, the guard's flash freeze and thaw).
+    //
+    // The frost map runs past the window edge by this much, so the corner
+    // ferns (which freeze first and reach furthest) start just outside the
+    // pane. The Ambient amounts are tuned to these numbers (docs/THEME.md).
+    readonly property real frostBleed: 28
+    readonly property real frostBleedTop: 32
+    readonly property real frostBleedBottom: 40
+
+    FrostOverlay {
+        id: frost
+        objectName: "frost"
+        anchors.fill: parent
+        anchors.margins: -root.frostBleed
+        anchors.topMargin: -root.frostBleedTop
+        anchors.bottomMargin: -root.frostBleedBottom
+        amount: Ambient.frostAmount
+        tint: Theme.frost
+        rimColor: Theme.frostRim
+        intensity: Theme.frostIntensity
+        shade: Theme.frostShade
+        shadeStrength: Theme.frostShadeStrength
+    }
+    // Reduce motion (or an unfocused window) skips the sweep: the frost jumps
+    // to its new amount and, if the window is live, crossfades from the old
+    // one through this ghost for a moment. Hidden the rest of the time.
+    FrostOverlay {
+        id: frostGhost
+        objectName: "frostGhost"
+        anchors.fill: parent
+        anchors.margins: -root.frostBleed
+        anchors.topMargin: -root.frostBleedTop
+        anchors.bottomMargin: -root.frostBleedBottom
+        opacity: 0
+        visible: opacity > 0 && amount > 0.001
+        tint: Theme.frost
+        rimColor: Theme.frostRim
+        intensity: Theme.frostIntensity
+        shade: Theme.frostShade
+        shadeStrength: Theme.frostShadeStrength
+    }
 
     // Sound cues for machine events (mode, guard, connection, errors).
     SoundWiring {}
@@ -101,65 +146,6 @@ ApplicationWindow {
         onLoaded: item.forceActiveFocus()
     }
 
-    // The frost map runs past the window edge by this much, so the corner
-    // ferns (which freeze first and reach furthest) start outside the pane
-    // and idle frost frames the content instead of covering it. The bottom
-    // runs furthest out: content scrolls under that edge, so at idle it
-    // keeps only a thin fringe and held frost leaves the last row readable.
-    // The Ambient amounts are tuned to these numbers (docs/THEME.md).
-    readonly property real frostBleed: 56
-    readonly property real frostBleedTop: 56
-    readonly property real frostBleedBottom: 140
-
-    // The header controls of the page on screen (badges, connection dot,
-    // gear; on Settings the close button), in window coordinates: the frost
-    // keeps clear of them so they stay readable in a frosted corner.
-    readonly property rect frostClear: root.page === "settings" && settingsLoader.item
-        ? settingsLoader.item.clearRect
-        : Qt.rect(content.x + homeHeader.x + homeHeader.controlsRect.x,
-                  content.y + homeHeader.y + homeHeader.controlsRect.y - scroller.contentY,
-                  homeHeader.controlsRect.width, homeHeader.controlsRect.height)
-    readonly property rect frostClearLocal: Qt.rect(root.frostClear.x + root.frostBleed,
-                                                    root.frostClear.y + root.frostBleedTop,
-                                                    root.frostClear.width, root.frostClear.height)
-
-    // Window frost, above everything and input-transparent. Its amount comes
-    // from Ambient (idle frost by heat, the guard's flash freeze and thaw).
-    FrostOverlay {
-        id: frost
-        objectName: "frost"
-        anchors.fill: parent
-        anchors.margins: -root.frostBleed
-        anchors.topMargin: -root.frostBleedTop
-        anchors.bottomMargin: -root.frostBleedBottom
-        z: 100
-        amount: Ambient.frostAmount
-        tint: Theme.frost
-        rimColor: Theme.frostRim
-        intensity: Theme.frostIntensity
-        shade: Theme.frostShade
-        shadeStrength: Theme.frostShadeStrength
-        clearRect: root.frostClearLocal
-    }
-    // Reduce motion (or an unfocused window) skips the sweep: the frost jumps
-    // to its new amount and, if the window is live, crossfades from the old
-    // one through this ghost for a moment. Hidden the rest of the time.
-    FrostOverlay {
-        id: frostGhost
-        anchors.fill: parent
-        anchors.margins: -root.frostBleed
-        anchors.topMargin: -root.frostBleedTop
-        anchors.bottomMargin: -root.frostBleedBottom
-        z: 100
-        opacity: 0
-        visible: opacity > 0 && amount > 0.001
-        tint: Theme.frost
-        rimColor: Theme.frostRim
-        intensity: Theme.frostIntensity
-        shade: Theme.frostShade
-        shadeStrength: Theme.frostShadeStrength
-        clearRect: root.frostClearLocal
-    }
     ParallelAnimation {
         id: frostCrossfade
         NumberAnimation { target: frostGhost; property: "opacity"; from: 1; to: 0; duration: 280 }

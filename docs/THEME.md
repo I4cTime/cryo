@@ -12,7 +12,7 @@ window live.
 |---|---|---|
 | `Prefs` | `Cryo/Prefs.qml` | User choices, persisted with QtCore `Settings` (QSettings: organization `i4c`, application `Cryo`; demo mode is `Cryo-demo`). Keys: `style`, `accent`, `effects`, `reduceMotion`, `soundEnabled`, `soundSet`, `soundVolume`, `frostLine`. |
 | `Theme` | `Cryo/Theme.qml` | The styles (data) and the tokens (properties reading the active style), fonts, the power-mode maps and helpers. |
-| `Ambient` | `Cryo/Ambient.qml` | Runtime state: `live`, `motion`, `connected`, `stale`, `heat`, `dormant`, `guard`, `guardPhase`, `frostAmount`. |
+| `Ambient` | `Cryo/Ambient.qml` | Runtime state: `live`, `motion`, `connected`, `stale`, `heat`, `dormant`, `guard`, `guardPhase`, `frostAmount`, `edgeIce`. |
 
 ## Styles
 
@@ -44,6 +44,7 @@ style.
 | `panelTop` | The lighter top of a panel gradient (for the ice material). |
 | `panelBorder` | Panel, control and divider lines. |
 | `panelHighlight` | The facet line along a panel's top edge. |
+| `panelOpacity` | Opacity of the panel fill alone (`Panel.qml`), 0..1. At 1 the slab is solid; below 1 the frost and the backdrop ghost faintly through it, like looking through a slab of ice. The text, controls, border, facet lines and drop shadow are never affected (the shadow masks itself out of the panel's shape when the fill is see-through). Panel text must keep AA over the worst case, the fill blended over pure frost at `frostIntensity` (see Contrast). All four styles ship at 1. |
 | `track` | Slider and gauge tracks, neutral button fill, spin box fill. |
 | `fg` | Primary text and values. |
 | `muted` | Secondary text, section titles, inactive icons. |
@@ -125,7 +126,14 @@ style and every choice (and the style default) the drawn accent has at least
 4.5:1 on that style's `panel` and 3:1 on its `bg`.
 
 Contrast: in every style `fg`, `muted`, `accent`, `accent2Text`, `hot` and
-`warn` reach WCAG AA (4.5:1) as text on `panel`.
+`warn` reach WCAG AA (4.5:1) as text on the panel fill: on `panel`, on
+`panelTop` and on the iced top dark styles draw, each at the style's
+`panelOpacity` over the window background and over pure frost (`frost`,
+`frostRim`, `frostShade` at `frostIntensity`).
+`tests/test_gui_tokens.py` computes this from the tokens, so it guards
+whatever `panelOpacity` a style picks. Under that worst case the dark styles
+stay AA only down to about 0.97 (cryo), 0.94 (aurora) and 0.98 (blackout);
+glacier to about 0.88.
 
 ## Thermal chrome
 
@@ -133,26 +141,33 @@ Contrast: in every style `fg`, `muted`, `accent`, `accent2Text`, `hot` and
   mapped 45 C -> 0, 85 C -> 1. It changes at most once per telemetry frame
   (1 Hz) and only eases (400 ms) on a jump over 0.15, so it never repaints
   continuously. Dormant (no daemon or no thermals): neutral heat 0.4.
-- `Ambient.frostAmount` drives the `FrostOverlay` in `Main.qml`: idle frost is
-  `idleMax * clamp(1 - heat / 0.6, 0, 1)` with `idleMax` 0.40; Thermal Guard
-  sweeps to `peakAmount` 0.95 in 550 ms (`guardPhase` "sweep"), settles to
-  `heldAmount` 0.44 ("held"), and thaws back over 2.5 s on release ("thaw").
-  Dormant (daemon unreachable or no thermals) it eases to a fixed
-  `dormantFrost` 0.34. With `Prefs.effects` off it is 0. Under reduce motion
+- The window frost (`FrostOverlay` in `Main.qml`) is a background layer:
+  drawn above the backdrop washes and below both pages, so every label,
+  icon, control and panel of the home column and of Settings sits on top of
+  it in every state. It shows behind the header, the section titles and in
+  the margins and gaps between panels, strongest in the corners; an opaque
+  panel hides it (see `panelOpacity`).
+- `Ambient.frostAmount` drives it: idle frost is
+  `idleMax * clamp(1 - heat / 0.6, 0, 1)` with `idleMax` 0.48; Thermal Guard
+  sweeps to `peakAmount` 1.0 in 550 ms (`guardPhase` "sweep", the whole
+  background freezes over), settles to `heldAmount` 0.60 ("held"), and
+  thaws back over 2.5 s on release ("thaw"). Dormant (daemon unreachable or
+  no thermals) it eases to a fixed `dormantFrost` 0.42. With `Prefs.effects`
+  off it is 0. Under reduce motion
   (or with the window unfocused) there is no sweep: the amount jumps and the
   overlay crossfades for 280 ms.
-- The overlay is larger than the window, so the ferns that freeze first
-  start outside the pane: 56 px past the sides and the top
-  (`frostBleed`, `frostBleedTop`) and 140 px past the bottom
-  (`frostBleedBottom`). At idle that leaves rich top corners and only a thin
-  fringe along the bottom, with nothing in the bottom 30 px of content
-  covered; held, every label stays readable. The amounts are tied to this
-  placement: changing the overflow changes how much of each amount shows.
-- The frost keeps clear of the header controls (badges, connection dot, the
-  gear; on Settings the close button): `Main.qml` passes their rect as the
-  overlay's `clearRect` and the shader fades the ice out around it over
-  `clearFeather` (18 px). The software fallback (a static frost image) has
-  no clear patch.
+- The overlay is a little larger than the window, so the ferns that freeze
+  first start just outside the pane: 28 px past the sides (`frostBleed`),
+  32 px past the top (`frostBleedTop`) and 40 px past the bottom
+  (`frostBleedBottom`). The amounts are tied to this placement: changing
+  the overflow changes how much of each amount shows.
+- Panels take part in the flash freeze without covering anything:
+  `Ambient.edgeIce` (0..1) rises with the sweep, holds at 1 while the guard
+  holds and falls with the thaw (from wherever it stood, so a release
+  mid-sweep or a re-engage mid-thaw never steps). `Panel.qml` leans its
+  border (halfway) and its facet highlight toward `frostInk` by it, so the
+  slabs look iced at their edges. It is derived from the guard animations,
+  so it eases only with motion and jumps otherwise; 0 with effects off.
 - Stale telemetry: when cryod is unreachable (`Ambient.stale`) the figures
   on screen are the last reading. The temperature tiles, the dGPU load row
   and the VRAM panel dim to `Ambient.staleOpacity` (0.45), their arcs, lines

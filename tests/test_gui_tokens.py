@@ -224,3 +224,78 @@ def test_unknown_style_names_resolve_to_cryo(gui, bad):
     assert accent.name().upper() == cryo["accent"].upper()
     assert gui.window.property("color").name().upper() == cryo["bg"].upper()
     assert gui.messages == []
+
+
+# -- panel text over see-through panels ----------------------------------------
+
+# Text tokens with the AA promise on `panel` (docs/THEME.md, Contrast).
+PANEL_TEXT = ("fg", "muted", "accent", "accent2Text", "hot", "warn")
+
+
+def _over(top, alpha: float, under):
+    """`top` at `alpha` composited over the opaque `under`."""
+    from PySide6.QtGui import QColor
+
+    return QColor.fromRgbF(*(t * alpha + u * (1 - alpha) for t, u in (
+        (top.redF(), under.redF()), (top.greenF(), under.greenF()), (top.blueF(), under.blueF()))))
+
+
+def panel_grounds(theme, opacity: float | None = None) -> list:
+    """Everything a panel's text can sit on in the active style, worst cases
+    included: each stop of the panel fill (its top, the iced top dark styles
+    draw, its bottom) at Theme.panelOpacity, over the window background and
+    over pure frost at the style's frostIntensity (the ice tint, the rim
+    and the shade). With panelOpacity 1 that is just the fill; below 1 the
+    frost under the slab counts. `opacity` overrides the token (self-check)."""
+    from PySide6.QtGui import QColor
+
+    def c(token: str) -> QColor:
+        return QColor(theme.property(token))
+
+    bg = c("bg")
+    intensity = theme.property("frostIntensity")
+    unders = [bg] + [_over(c(t), intensity, bg) for t in ("frost", "frostRim", "frostShade")]
+    top = c("panelTop")
+    iced_top = top if theme.property("isLight") else _over(c("frost"), 0.035, top)
+    a = theme.property("panelOpacity") if opacity is None else opacity
+    return [_over(stop, a, under) for stop in (top, iced_top, c("panel")) for under in unders]
+
+
+def _lum(c) -> float:
+    def lin(v: float) -> float:
+        return v / 12.92 if v <= 0.04045 else ((v + 0.055) / 1.055) ** 2.4
+    return 0.2126 * lin(c.redF()) + 0.7152 * lin(c.greenF()) + 0.0722 * lin(c.blueF())
+
+
+def _contrast(a, b) -> float:
+    la, lb = _lum(a), _lum(b)
+    return (max(la, lb) + 0.05) / (min(la, lb) + 0.05)
+
+
+def test_panel_text_reads_over_the_frost_at_the_styles_panel_opacity(gui):
+    """Panel text keeps AA (4.5:1) at the style's panelOpacity, in the worst
+    case: the slab blended over pure frost. Reads the token, so it guards
+    whatever value a style chooses."""
+    from PySide6.QtGui import QColor
+
+    from conftest import spin
+
+    theme, prefs = gui.singleton("Theme"), gui.singleton("Prefs")
+    for name in ("cryo", "aurora", "glacier", "blackout"):
+        prefs.setProperty("style", name)
+        spin(30)
+        assert theme.property("styleName") == name
+        opacity = theme.property("panelOpacity")
+        assert 0 < opacity <= 1, name
+        grounds = panel_grounds(theme)
+        for token in PANEL_TEXT:
+            worst = min(_contrast(QColor(theme.property(token)), g) for g in grounds)
+            assert worst >= 4.5, f"{name}: {token} at {worst:.2f}:1 (panelOpacity {opacity})"
+    prefs.setProperty("style", "cryo")
+    spin(30)
+    # Self-check: the frost under a see-through slab does count.
+    muted = QColor(theme.property("muted"))
+    solid = min(_contrast(muted, g) for g in panel_grounds(theme, 1.0))
+    ghost = min(_contrast(muted, g) for g in panel_grounds(theme, 0.5))
+    assert ghost < solid
+    assert gui.messages == []

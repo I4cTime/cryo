@@ -199,23 +199,68 @@ def test_close_sits_where_the_gear_is(ui):
     assert back is None
 
 
-def test_frost_keeps_clear_of_the_header_controls(ui):
-    def clear():
-        r = ui.window.property("frostClear")
-        return (r.x(), r.y(), r.width(), r.height())
+def paint_order(root) -> list:
+    """Every item under `root` in the order the scene graph paints it:
+    siblings by z (declaration order among equals), a child with negative
+    z before its parent, the others after it."""
+    out: list = []
 
-    def inside(inner, outer):
-        return (inner[0] >= outer[0] - 0.5 and inner[1] >= outer[1] - 0.5
-                and inner[0] + inner[2] <= outer[0] + outer[2] + 0.5
-                and inner[1] + inner[3] <= outer[1] + outer[3] + 0.5)
+    def visit(item) -> None:
+        kids = sorted(enumerate(item.childItems()), key=lambda p: (p[1].z(), p[0]))
+        for _, kid in kids:
+            if kid.z() < 0:
+                visit(kid)
+        out.append(item)
+        for _, kid in kids:
+            if kid.z() >= 0:
+                visit(kid)
 
-    gear = _scene_rect(find(ui, "settingsButton"))
-    assert inside(gear, clear())
-    ui.daemon.set_state(guard=True)                     # the badge joins the clear patch
+    visit(root)
+    return out
+
+
+def _subtree(item) -> list:
+    out, stack = [], [item]
+    while stack:
+        it = stack.pop()
+        out.append(it)
+        stack.extend(it.childItems())
+    return out
+
+
+def test_frost_sits_between_the_backdrop_and_both_pages(ui):
+    """The window frost is a background layer: above the backdrop washes,
+    below every label, icon, control and panel of the home column and of the
+    Settings page, in every frost state."""
+    from shiboken6 import Shiboken
+
+    def key(item) -> int:
+        return Shiboken.getCppPointer(item)[0]
+
+    def check(page_root) -> None:
+        order = [key(i) for i in paint_order(ui.window.contentItem())]
+        at = {k: n for n, k in enumerate(order)}
+        backdrop, frost, ghost = (at[key(find(ui, n))] for n in ("backdrop", "frost", "frostGhost"))
+        page = _subtree(page_root)
+        texts = [i for i in page if i.property("text") not in (None, "")]
+        assert len(texts) > 10                              # the page really is in there
+        assert backdrop < frost < ghost < min(at[key(i)] for i in page)
+
+    ambient = ui.singleton("Ambient")
+    ambient.setProperty("forceLive", True)
+    home = find(ui, "scroller")
+    check(home)                                                       # idle
+    ui.daemon.set_state(cpu_temp=91.0, gpu_temp=80.0, guard=True)     # sweep, then held
     spin(30)
-    assert clear()[2] > gear[2] * 3
+    assert ambient.property("guardPhase") == "sweep"
+    check(home)
+    ui.daemon.set_state(connected=False)                              # thaw into dormant
+    spin(30)
+    assert ambient.property("guardPhase") == "thaw"
+    check(home)
+    ui.daemon.set_state(connected=True, guard=False)
     open_settings(ui)
-    assert clear() == pytest.approx(_scene_rect(find(ui, "settingsClose")))
+    check(find(ui, "settingsLoader").property("item"))
     assert ui.messages == []
 
 

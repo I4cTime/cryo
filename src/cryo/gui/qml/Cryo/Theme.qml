@@ -18,7 +18,7 @@ QtObject {
             washHotA: "#2EFF2D6A", washHotB: "#14FF8A00",
             washNeutral: "#0C828690",
             panel: "#090D14", panelTop: "#0D131D",
-            panelBorder: "#1A2233", panelHighlight: "#14FFFFFF",
+            panelBorder: "#1A2233", panelHighlight: "#14FFFFFF", panelOpacity: 1.0,
             track: "#141A26",
             fg: "#F3F5F9", muted: "#828690",
             accent: "#00D1FF", accent2: "#7B2DFF", accent2Text: "#A082FF",
@@ -37,7 +37,7 @@ QtObject {
             washHotA: "#2AFF4F6E", washHotB: "#14FFB040",
             washNeutral: "#0C7F9A97",
             panel: "#071417", panelTop: "#0A1C20",
-            panelBorder: "#153038", panelHighlight: "#14E0FFF4",
+            panelBorder: "#153038", panelHighlight: "#14E0FFF4", panelOpacity: 1.0,
             track: "#10262C",
             fg: "#EFFAF6", muted: "#7F9A97",
             accent: "#3DF5B4", accent2: "#8A5CFF", accent2Text: "#B49CFF",
@@ -56,7 +56,7 @@ QtObject {
             washHotA: "#3DFF9A86", washHotB: "#2EFFC46A",
             washNeutral: "#145B7386",
             panel: "#F9FCFE", panelTop: "#FFFFFF",
-            panelBorder: "#C9DCE8", panelHighlight: "#FFFFFFFF",
+            panelBorder: "#C9DCE8", panelHighlight: "#FFFFFFFF", panelOpacity: 1.0,
             track: "#D7E5EE",
             fg: "#0B2233", muted: "#566E80",
             accent: "#006B93", accent2: "#6A3DE8", accent2Text: "#5A32C8",
@@ -75,9 +75,9 @@ QtObject {
             washHotA: "#0EFF5470", washHotB: "#06FFB300",
             washNeutral: "#067A7A7A",
             panel: "#050505", panelTop: "#080808",
-            panelBorder: "#1C1C1C", panelHighlight: "#0DFFFFFF",
+            panelBorder: "#1C1C1C", panelHighlight: "#0DFFFFFF", panelOpacity: 1.0,
             track: "#151515",
-            fg: "#EDEDED", muted: "#7A7A7A",
+            fg: "#EDEDED", muted: "#7D7D7D",
             accent: "#9BE7FF", accent2: "#6E6E78", accent2Text: "#A0A0AA",
             knob: "#EDEDED",
             frost: "#DDEFF5", frostRim: "#F4FBFD", frostShade: "#3A4A52", frostInk: "#E4F4FA",
@@ -138,6 +138,10 @@ QtObject {
     readonly property color panelTop: s.panelTop
     readonly property color panelBorder: s.panelBorder
     readonly property color panelHighlight: s.panelHighlight
+    // Opacity of the panel fill alone (1 = solid slab); below 1 the frost
+    // and the backdrop ghost faintly through. Content, border, facet lines
+    // and shadow are never affected.
+    readonly property real panelOpacity: s.panelOpacity
     readonly property color track: s.track
     readonly property color fg: s.fg
     readonly property color muted: s.muted

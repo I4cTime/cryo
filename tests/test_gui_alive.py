@@ -220,7 +220,7 @@ def test_dormant_frost_holds_a_light_fixed_value(gui, live):
     assert 0.0 < mid < amb.property("dormantFrost")     # eases in
     spin(800)
     assert amb.property("frostAmount") == pytest.approx(amb.property("dormantFrost"))
-    assert amb.property("dormantFrost") == pytest.approx(0.34)
+    assert amb.property("dormantFrost") == pytest.approx(0.42)
     d.set_state(connected=True, cpu_temp=40.0, gpu_temp=38.0)
     spin(800)
     assert amb.property("frostAmount") == pytest.approx(amb.property("idleMax"))
