@@ -39,6 +39,9 @@ class Daemon(QObject):
     configChanged = Signal()
     errorOccurred = Signal(str)
 
+    # True only for the scripted stand-in (cryo.gui.demo.DemoDaemon).
+    DEMO = False
+
     def __init__(self, parent: QObject | None = None) -> None:
         super().__init__(parent)
         self._connected = False
@@ -52,6 +55,12 @@ class Daemon(QObject):
         self._gpu_history: list[float] = []
         self._vram_history: list[float] = []
         self._vram_peak = 0
+        self._setup_transport()
+
+    # -- connection --------------------------------------------------------
+
+    def _setup_transport(self) -> None:
+        """Open the cryod sockets. DemoDaemon replaces this (no sockets)."""
         self._buffer = b""
 
         # Telemetry stream socket
@@ -72,8 +81,6 @@ class Daemon(QObject):
         self._reconnect.setInterval(2000)
         self._reconnect.timeout.connect(self._connect)
         self._connect()
-
-    # -- connection --------------------------------------------------------
 
     def _connect(self) -> None:
         if self._stream.state() == QLocalSocket.LocalSocketState.UnconnectedState:
@@ -148,6 +155,10 @@ class Daemon(QObject):
         self._cmd.flush()
 
     # -- properties for QML ------------------------------------------------
+
+    @Property(bool, constant=True)
+    def demo(self) -> bool:
+        return self.DEMO
 
     @Property(bool, notify=connectedChanged)
     def connected(self) -> bool:

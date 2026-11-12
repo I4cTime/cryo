@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import sys
 from pathlib import Path
 
@@ -48,9 +49,40 @@ def _brand_icon(name: str) -> QIcon | None:
     return None
 
 
+def build_engine(daemon: Daemon, qml_file: Path | None = None) -> QQmlApplicationEngine:
+    """The QML engine every entry point uses (app, tour, tests): the `Cryo`
+    module on the import path, the bridge as the `daemon` context property,
+    Main.qml loaded. Check `engine.rootObjects()` for success, and delete
+    the engine before the daemon it references."""
+    engine = QQmlApplicationEngine()
+    engine.addImportPath(str(QML_DIR))
+    engine.rootContext().setContextProperty("daemon", daemon)
+    engine.load(QUrl.fromLocalFile(str(qml_file or QML_DIR / "Main.qml")))
+    return engine
+
+
+def parse_args(argv: list[str]) -> tuple[argparse.Namespace, list[str]]:
+    """Cryo's own flags; everything else (-platform, -style ...) goes to Qt."""
+    from cryo.gui.demo import SCENARIO_NAMES
+
+    parser = argparse.ArgumentParser(prog="cryo-gui", allow_abbrev=False)
+    parser.add_argument(
+        "--demo", action="store_true",
+        help="run against a scripted daemon (no cryod needed, real settings untouched)",
+    )
+    parser.add_argument(
+        "--scenario", choices=SCENARIO_NAMES, default="cycle",
+        help="demo timeline (default: cycle)",
+    )
+    return parser.parse_known_args(argv)
+
+
 def main() -> None:
-    app = QApplication(sys.argv)
-    app.setApplicationName("Cryo")
+    args, qt_args = parse_args(sys.argv[1:])
+    app = QApplication([sys.argv[0], *qt_args])
+    # Demo mode runs under its own application name, so nothing it
+    # persists (QSettings) can ever land in the real app's settings.
+    app.setApplicationName("Cryo-demo" if args.demo else "Cryo")
     # Wayland app_id must match the desktop entry basename, or the
     # compositor can't associate the window with cryo.desktop (dock and
     # alt-tab would show a generic icon and the python binary name).
@@ -60,11 +92,14 @@ def main() -> None:
         app.setWindowIcon(window_icon)
     app.setQuitOnLastWindowClosed(False)
 
-    daemon = Daemon()
+    if args.demo:
+        from cryo.gui.demo import DemoDaemon
 
-    engine = QQmlApplicationEngine()
-    engine.rootContext().setContextProperty("daemon", daemon)
-    engine.load(QUrl.fromLocalFile(str(QML_DIR / "Main.qml")))
+        daemon: Daemon = DemoDaemon(scenario=args.scenario)
+    else:
+        daemon = Daemon()
+
+    engine = build_engine(daemon)
     if not engine.rootObjects():
         sys.exit("Failed to load QML")
     window = engine.rootObjects()[0]
@@ -134,7 +169,7 @@ def main() -> None:
 
     def update_tooltip() -> None:
         tray.setToolTip(
-            f"Cryo - {daemon.profile}\n"
+            f"Cryo{' (demo)' if daemon.demo else ''} - {daemon.profile}\n"
             f"CPU {daemon.cpuTemp:.0f}°C · GPU {daemon.gpuTemp:.0f}°C"
             + (f" · VRAM {daemon.vramUsed / 1024:.1f}G" if daemon.vramTotal else "")
             + (" · GAMING" if daemon.gaming else "")
