@@ -7,10 +7,12 @@ import pytest
 
 os.environ["QT_QPA_PLATFORM"] = "offscreen"   # before any Qt application exists
 
-QtGui = pytest.importorskip("PySide6.QtGui", exc_type=ImportError)
-pytest.importorskip("PySide6.QtQml", exc_type=ImportError)
-pytest.importorskip("PySide6.QtQuick", exc_type=ImportError)
-pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)      # cryo.gui.main (tray)
+from conftest import require_qt  # noqa: E402
+
+QtGui = require_qt("PySide6.QtGui")
+require_qt("PySide6.QtQml")
+require_qt("PySide6.QtQuick")
+require_qt("PySide6.QtWidgets")      # cryo.gui.main (tray)
 
 from PySide6.QtCore import (  # noqa: E402
     QCoreApplication, QEvent, QObject, QtMsgType, qInstallMessageHandler,
@@ -62,6 +64,9 @@ def gui(qapp):
         daemon.deleteLater()
         QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
         qInstallMessageHandler(previous)
+    # Teardown is part of the contract: deleting in the wrong order makes
+    # every daemon.* binding warn, and that must not pass unnoticed.
+    assert not messages, messages
 
 
 class SimpleGui:
