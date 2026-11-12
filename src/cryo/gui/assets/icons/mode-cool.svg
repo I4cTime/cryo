@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+  <g fill="none" stroke="#FFFFFF" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+    <polygon points="12,8.9 14.68,10.45 14.68,13.55 12,15.1 9.32,13.55 9.32,10.45"/>
+    <line x1="12" y1="8.9" x2="12" y2="2.6"/>
+    <line x1="14.68" y1="10.45" x2="20.14" y2="7.3"/>
+    <line x1="14.68" y1="13.55" x2="20.14" y2="16.7"/>
+    <line x1="12" y1="15.1" x2="12" y2="21.4"/>
+    <line x1="9.32" y1="13.55" x2="3.86" y2="16.7"/>
+    <line x1="9.32" y1="10.45" x2="3.86" y2="7.3"/>
+    <polyline points="9.95,3.67 12,5.1"/>
+    <polyline points="14.05,3.67 12,5.1"/>
+    <polyline points="18.19,6.06 17.98,8.55"/>
+    <polyline points="20.24,9.61 17.98,8.55"/>
+    <polyline points="20.24,14.39 17.98,15.45"/>
+    <polyline points="18.19,17.94 17.98,15.45"/>
+    <polyline points="14.05,20.33 12,18.9"/>
+    <polyline points="9.95,20.33 12,18.9"/>
+    <polyline points="5.81,17.94 6.02,15.45"/>
+    <polyline points="3.76,14.39 6.02,15.45"/>
+    <polyline points="3.76,9.61 6.02,8.55"/>
+    <polyline points="5.81,6.06 6.02,8.55"/>
+  </g>
+</svg>
