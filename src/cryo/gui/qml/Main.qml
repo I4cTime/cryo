@@ -40,7 +40,8 @@ ApplicationWindow {
     Binding { target: Ambient; property: "profile"; value: daemon.profile }
 
     // Heat-driven washes (static when effects are off).
-    Backdrop { objectName: "backdrop" }
+    Backdrop { id: backdrop; objectName: "backdrop" }
+    Binding { target: Ambient; property: "backdrop"; value: backdrop }
 
     // Window frost, between the backdrop and the pages: every label, icon,
     // control and panel of both pages is drawn above it, so the ice never

@@ -32,6 +32,7 @@ ColumnLayout {
 
             Icon {
                 id: frostIcon
+                z: 1            // above the line's Clearing, which reaches under it
                 anchors.verticalCenter: parent.verticalCenter
                 name: "snowflake"
                 size: 11
@@ -45,6 +46,9 @@ ColumnLayout {
                     enabled: Ambient.motion
                     NumberAnimation { duration: 220; easing.type: Easing.OutCubic }
                 }
+                // On the backdrop at the bottom frost band. It backs the line
+                // box, not either text, so it holds through the crossfade.
+                Clearing { objectName: "clearing" }
                 Label {
                     id: ghostText
                     objectName: "footerFrostGhost"
@@ -103,5 +107,8 @@ ColumnLayout {
         font.pixelSize: 10
         horizontalAlignment: Text.AlignHCenter
         elide: Text.ElideRight
+        // With Frost's line above it, the line's Clearing (drawn first)
+        // reaches under this one; its own would cover the line.
+        Clearing { objectName: "clearing"; active: !footer.frostOn }
     }
 }

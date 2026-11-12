@@ -4,6 +4,7 @@ singleton Ambient 1.0 Ambient.qml
 singleton Prefs 1.0 Prefs.qml
 singleton Sfx 1.0 Sfx.qml
 SectionTitle 1.0 SectionTitle.qml
+Clearing 1.0 Clearing.qml
 Mono 1.0 Mono.qml
 Panel 1.0 Panel.qml
 ModeButton 1.0 ModeButton.qml

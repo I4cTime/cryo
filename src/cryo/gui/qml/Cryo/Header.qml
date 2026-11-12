@@ -9,7 +9,10 @@ RowLayout {
     signal settingsClicked()
     Layout.fillWidth: true
     spacing: 12
+    // z 1 here and on the wordmark: the subtitle's Clearing reaches under
+    // both, and must stay below them.
     LivingMark {
+        z: 1
         Layout.preferredWidth: 42
         Layout.preferredHeight: 42
     }
@@ -17,6 +20,7 @@ RowLayout {
         Layout.fillWidth: true
         spacing: 2
         Label {
+            z: 1
             text: "CRYO"
             font.pixelSize: 26
             font.bold: true
@@ -25,10 +29,12 @@ RowLayout {
         }
         Label {
             Layout.fillWidth: true
+            objectName: "headerSubtitle"
             text: daemon.modelName || "Alienware command center"
             color: Theme.muted
             font.pixelSize: 12
             elide: Text.ElideRight
+            Clearing { objectName: "clearing" }
         }
     }
     Badge {
@@ -54,6 +60,7 @@ RowLayout {
         objectName: "settingsButton"
         Layout.leftMargin: -4
         name: "settings"
+        backed: true
         tooltip: "Settings"
         onClicked: header.settingsClicked()
     }

@@ -58,6 +58,7 @@ FocusScope {
                     Layout.fillWidth: true
                     spacing: 2
                     Label {
+                        z: 1                // above the subtitle's Clearing
                         text: "SETTINGS"
                         color: Theme.fg
                         font.pixelSize: 26
@@ -66,10 +67,12 @@ FocusScope {
                     }
                     Label {
                         Layout.fillWidth: true
+                        objectName: "settingsSubtitle"
                         text: "Saved as you change them."
                         color: Theme.muted
                         font.pixelSize: 12
                         elide: Text.ElideRight
+                        Clearing { objectName: "clearing" }
                     }
                 }
                 IconButton {
@@ -77,6 +80,7 @@ FocusScope {
                     objectName: "settingsClose"
                     Layout.leftMargin: -4
                     name: "close"
+                    backed: true
                     tooltip: "Close (Esc)"
                     onClicked: page.back()
                 }

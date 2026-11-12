@@ -64,8 +64,15 @@ ColumnLayout {
         Layout.fillWidth: true
         spacing: 8
         opacity: Ambient.stale ? Ambient.staleOpacity : 1
-        Label { text: "dGPU load"; color: Theme.muted; font.pixelSize: 11 }
+        // On the backdrop: the label and the figure each get a Clearing.
+        Label {
+            objectName: "gpuLoadLabel"
+            text: "dGPU load"; color: Theme.muted; font.pixelSize: 11
+            Clearing { objectName: "clearing" }
+        }
         Rectangle {
+            objectName: "gpuLoadBar"
+            z: 1        // above the figure's Clearing, which reaches under it
             Layout.fillWidth: true
             height: 5; radius: 3
             color: Theme.track
@@ -80,7 +87,11 @@ ColumnLayout {
                 Behavior on width { enabled: Ambient.motion; NumberAnimation { duration: 300 } }
             }
         }
-        Mono { text: daemon.gpuUtil + "%"; color: Ambient.stale ? Theme.muted : Theme.fg; font.pixelSize: 11 }
+        Mono {
+            objectName: "gpuLoadValue"
+            text: daemon.gpuUtil + "%"; color: Ambient.stale ? Theme.muted : Theme.fg; font.pixelSize: 11
+            Clearing { objectName: "clearing" }
+        }
     }
 
     // VRAM - sparkline scaled to the card's full capacity, so a

@@ -147,6 +147,17 @@ glacier to about 0.88.
   it in every state. It shows behind the header, the section titles and in
   the margins and gaps between panels, strongest in the corners; an opaque
   panel hides it (see `panelOpacity`).
+- Labels with no panel behind them (the section titles, the two header
+  subtitles, the dGPU row, Frost's footer line) each carry a `Clearing`
+  (`Cryo/Clearing.qml`): a soft halo in the ground colour under the label,
+  `Backdrop.colourAt` (`bg` with the washes over it at that spot), drawn
+  above the frost and below the label, so the ice looks melted back around
+  the lettering and nothing shows where there is no ice. It is a Canvas
+  (software renderer safe) painted only on resize or a ground change; its
+  opacity follows `Ambient.frostAmount`, whole from 0.36 up, 0 with effects
+  off. A sibling it reaches under that must stay on top takes `z: 1`. The
+  header gear and the Settings close button are `IconButton { backed: true }`:
+  round keycaps in `panel` with a `panelBorder` rim.
 - `Ambient.frostAmount` drives it: idle frost is
   `idleMax * clamp(1 - heat / 0.6, 0, 1)` with `idleMax` 0.48; Thermal Guard
   sweeps to `peakAmount` 1.0 in 550 ms (`guardPhase` "sweep", the whole

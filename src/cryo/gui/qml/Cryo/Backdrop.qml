@@ -41,11 +41,39 @@ Shape {
     readonly property color washA: wash(Theme.washColdA, Theme.washHotA)
     readonly property color washB: wash(Theme.washColdB, Theme.washHotB)
 
+    // Geometry of the two washes (the ShapePaths below draw from these).
+    readonly property real aX: width * 0.12
+    readonly property real aY: -40
+    readonly property real aR: width * 0.95
+    readonly property real bX: width * 0.95
+    readonly property real bY: height * 0.35
+    readonly property real bR: width * 0.8
+
+    // The opaque colour the window shows at (x, y) in window coordinates
+    // before the frost: Theme.bg with both washes over it, worked out the
+    // way the gradients draw (alpha falling linearly to 0 at the radius).
+    // Clearing.qml paints in it, so a clearing matches the ground it sits
+    // on and only the frost it covers goes. Rounded to 8 bits per channel,
+    // so moving a pixel or two gives back an equal colour.
+    function colourAt(x, y) {
+        function over(c, a, under) {
+            return [c.r * a + under[0] * (1 - a), c.g * a + under[1] * (1 - a), c.b * a + under[2] * (1 - a)]
+        }
+        function fall(cx, cy, r) {
+            return Math.max(0, 1 - Math.hypot(x - cx, y - cy) / Math.max(1, r))
+        }
+        let k = [Theme.bg.r, Theme.bg.g, Theme.bg.b]
+        k = over(washA, washA.a * fall(aX, aY, aR), k)
+        k = over(washB, washB.a * fall(bX, bY, bR), k)
+        const q = v => Math.round(Math.max(0, Math.min(1, v)) * 255) / 255
+        return Qt.rgba(q(k[0]), q(k[1]), q(k[2]), 1)
+    }
+
     ShapePath {
         strokeColor: "transparent"
         fillGradient: RadialGradient {
-            centerX: backdrop.width * 0.12; centerY: -40
-            centerRadius: backdrop.width * 0.95
+            centerX: backdrop.aX; centerY: backdrop.aY
+            centerRadius: backdrop.aR
             focalX: centerX; focalY: centerY
             GradientStop { position: 0.0; color: backdrop.washA }
             GradientStop { position: 1.0; color: Qt.alpha(backdrop.washA, 0) }
@@ -59,8 +87,8 @@ Shape {
     ShapePath {
         strokeColor: "transparent"
         fillGradient: RadialGradient {
-            centerX: backdrop.width * 0.95; centerY: backdrop.height * 0.35
-            centerRadius: backdrop.width * 0.8
+            centerX: backdrop.bX; centerY: backdrop.bY
+            centerRadius: backdrop.bR
             focalX: centerX; focalY: centerY
             GradientStop { position: 0.0; color: backdrop.washB }
             GradientStop { position: 1.0; color: Qt.alpha(backdrop.washB, 0) }

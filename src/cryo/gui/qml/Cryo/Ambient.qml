@@ -36,6 +36,9 @@ QtObject {
     property bool hasThermals: true
     property bool guard: false          // Thermal Guard engaged (and connected)
     property string profile: ""
+    // The window's Backdrop (Main.qml sets it): Clearing.qml asks it for
+    // the ground colour under a label (Backdrop.colourAt).
+    property Item backdrop: null
 
     // ---- heat ----
     // No temperatures to go by (disconnected, no thermals, no reading yet):

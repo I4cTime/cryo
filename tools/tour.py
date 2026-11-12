@@ -261,6 +261,18 @@ def _footer(tour: "Tour") -> None:
     top = max(0.0, tour.scroller.property("contentHeight") - tour.scroller.height())
     tour.scroller.setProperty("contentY", top)
 
+
+@scene("footer-held")
+def _footer_held(tour: "Tour") -> None:
+    # the bottom of the column with the guard holding (the bottom frost band
+    # behind Frost's line and the last section titles)
+    FROST_CLOCK.now += 600
+    tour.ramp(**GUARD)
+    tour.daemon.set_state(guard=True)
+    tour.wait(50)
+    top = max(0.0, tour.scroller.property("contentHeight") - tour.scroller.height())
+    tour.scroller.setProperty("contentY", top)
+
 # ---- end of piece G ----------------------------------------------------------
 
 
