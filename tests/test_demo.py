@@ -3,8 +3,10 @@ applies every GUI command locally. No sockets, no hardware."""
 
 import pytest
 
-pytest.importorskip("PySide6.QtCore", exc_type=ImportError)
-pytest.importorskip("PySide6.QtNetwork", exc_type=ImportError)
+from conftest import require_qt  # noqa: E402
+
+require_qt("PySide6.QtCore")
+require_qt("PySide6.QtNetwork")
 
 from types import SimpleNamespace  # noqa: E402
 

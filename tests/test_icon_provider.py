@@ -9,9 +9,11 @@ import pytest
 
 os.environ["QT_QPA_PLATFORM"] = "offscreen"   # before any Qt application exists
 
-QtGui = pytest.importorskip("PySide6.QtGui", exc_type=ImportError)
-pytest.importorskip("PySide6.QtSvg", exc_type=ImportError)
-pytest.importorskip("PySide6.QtQuick", exc_type=ImportError)
+from conftest import require_qt  # noqa: E402
+
+QtGui = require_qt("PySide6.QtGui")
+require_qt("PySide6.QtSvg")
+require_qt("PySide6.QtQuick")
 
 from PySide6.QtCore import QSize, QtMsgType, qInstallMessageHandler  # noqa: E402
 

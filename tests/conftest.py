@@ -10,6 +10,7 @@ Prefs (QtCore Settings) can never read or write the user's real
 """
 
 import atexit
+import importlib
 import os
 import shutil
 import tempfile
@@ -21,18 +22,29 @@ os.environ["XDG_CONFIG_HOME"] = _CONFIG_HOME
 atexit.register(shutil.rmtree, _CONFIG_HOME, ignore_errors=True)
 
 
+def require_qt(name: str):
+    """Import a Qt module, skipping the test when it cannot load on this
+    machine. On CI a missing Qt library is a failure instead: the workflow
+    installs them, and a silent skip would turn the GUI tests off."""
+    if os.environ.get("CI"):
+        return importlib.import_module(name)
+    return pytest.importorskip(name, exc_type=ImportError)
+
+
 @pytest.fixture(scope="session")
 def qapp():
     """One Qt application for the whole session: a QGuiApplication when
     QtGui can load on this runner, else a QCoreApplication (enough for the
     demo daemon). Tests that need QtGui/QtQuick check the type and skip."""
     os.environ["QT_QPA_PLATFORM"] = "offscreen"
-    QtCore = pytest.importorskip("PySide6.QtCore", exc_type=ImportError)
+    QtCore = require_qt("PySide6.QtCore")
     app = QtCore.QCoreApplication.instance()
     if app is None:
         try:
             from PySide6.QtGui import QGuiApplication
         except ImportError:
+            if os.environ.get("CI"):
+                raise
             app = QtCore.QCoreApplication([])
         else:
             app = QGuiApplication([])
@@ -85,12 +97,12 @@ class GuiHarness:
 
 @pytest.fixture
 def gui(qapp):
-    QtGui = pytest.importorskip("PySide6.QtGui", exc_type=ImportError)
-    pytest.importorskip("PySide6.QtQml", exc_type=ImportError)
-    pytest.importorskip("PySide6.QtQuick", exc_type=ImportError)
-    pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)   # cryo.gui.main (tray)
+    QtGui = require_qt("PySide6.QtGui")
+    require_qt("PySide6.QtQml")
+    require_qt("PySide6.QtQuick")
+    require_qt("PySide6.QtWidgets")   # cryo.gui.main (tray)
     if not isinstance(qapp, QtGui.QGuiApplication):
-        pytest.skip("QtGui is not usable on this runner")
+        pytest.skip("QtGui is not usable on this runner")   # unreachable on CI: qapp raises there
     from PySide6.QtCore import QCoreApplication, QEvent, QtMsgType, qInstallMessageHandler
 
     from cryo.gui.demo import DemoDaemon
@@ -120,3 +132,6 @@ def gui(qapp):
         daemon.deleteLater()
         QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
         qInstallMessageHandler(previous)
+    # Teardown is part of the contract: deleting in the wrong order makes
+    # every daemon.* binding warn, and that must not pass unnoticed.
+    assert not messages, messages

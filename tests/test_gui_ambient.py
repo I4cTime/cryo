@@ -9,7 +9,9 @@ import pytest
 
 os.environ["QT_QPA_PLATFORM"] = "offscreen"   # before any Qt application exists
 
-pytest.importorskip("PySide6.QtQuick", exc_type=ImportError)
+from conftest import require_qt  # noqa: E402
+
+require_qt("PySide6.QtQuick")
 
 from conftest import spin  # noqa: E402
 

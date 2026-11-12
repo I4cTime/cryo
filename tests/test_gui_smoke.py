@@ -8,10 +8,12 @@ import pytest
 
 os.environ["QT_QPA_PLATFORM"] = "offscreen"   # before any Qt application exists
 
-pytest.importorskip("PySide6.QtGui", exc_type=ImportError)
-pytest.importorskip("PySide6.QtQml", exc_type=ImportError)
-pytest.importorskip("PySide6.QtQuick", exc_type=ImportError)
-pytest.importorskip("PySide6.QtWidgets", exc_type=ImportError)      # cryo.gui.main (tray)
+from conftest import require_qt  # noqa: E402
+
+require_qt("PySide6.QtGui")
+require_qt("PySide6.QtQml")
+require_qt("PySide6.QtQuick")
+require_qt("PySide6.QtWidgets")      # cryo.gui.main (tray)
 
 from PySide6.QtCore import QObject  # noqa: E402
 from PySide6.QtQuick import QQuickItem, QQuickWindow  # noqa: E402,F401
