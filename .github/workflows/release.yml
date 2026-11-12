@@ -1,0 +1,95 @@
+name: Release
+
+# A version tag builds the installer bundle and attaches it, with SHA256SUMS
+# and a build provenance attestation, to a draft release. The release routine
+# (/release cryo) writes the notes and publishes the draft.
+# workflow_dispatch with dry_run builds the bundle as a workflow artifact only.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Build the bundle and keep it as a workflow artifact; do not touch releases
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  bundle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    env:
+      RELEASE: ${{ github.event_name == 'push' || !inputs.dry_run }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v10.3.3
+        with:
+          python-version: "3.12"
+
+      - name: Tag matches the project version
+        if: env.RELEASE == 'true'
+        run: |
+          if [[ "$GITHUB_REF_TYPE" != tag ]]; then
+            echo "::error::a release run needs a tag ref (got $GITHUB_REF); use dry_run on a branch"
+            exit 1
+          fi
+          uv run --no-project tools/build_bundle.py --check-tag "$GITHUB_REF_NAME"
+
+      # The same checks as ci.yml's check job.
+      - name: Sync venv
+        run: uv sync --frozen
+
+      - name: Qt runtime libraries
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q --no-install-recommends \
+            libegl1 libgl1 libxkbcommon0 libfontconfig1 libdbus-1-3 \
+            libglib2.0-0t64 libgssapi-krb5-2
+
+      - name: Tests
+        run: uv run --frozen pytest -q -rs
+
+      - name: Build bundle
+        run: uv run --no-project tools/build_bundle.py --out dist --uv-cache "$RUNNER_TEMP/uv-download"
+
+      - name: Attest build provenance
+        if: env.RELEASE == 'true'
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: dist/cryo-*-linux-x86_64.tar.gz
+
+      - name: Attach to the draft release
+        if: env.RELEASE == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" --draft --verify-tag --title "Cryo ${TAG#v}" \
+              --notes "Draft: the release notes are written when it is published."
+          fi
+          gh release upload "$TAG" dist/cryo-*-linux-x86_64.tar.gz dist/SHA256SUMS --clobber
+
+      - name: Keep the bundle as a workflow artifact
+        if: env.RELEASE != 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: cryo-bundle
+          path: |
+            dist/cryo-*-linux-x86_64.tar.gz
+            dist/SHA256SUMS
+          if-no-files-found: error

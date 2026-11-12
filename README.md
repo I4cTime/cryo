@@ -113,19 +113,38 @@ Cryo labels it accordingly.
 
 ## Install
 
+Download `cryo-<version>-linux-x86_64.tar.gz` from the
+[latest release](https://github.com/I4cTime/cryo/releases/latest), then:
+
+```sh
+tar xf cryo-*-linux-x86_64.tar.gz && cd cryo-*/
+sudo ./install.sh   # /opt/cryo + cryoctl/cryo-gui in /usr/local/bin + systemd units + icons + .desktop
+```
+
+Requires: an x86_64 glibc distro with systemd, the `alienware-wmi` kernel
+driver (mainline; fan control needs its hwmon, which landed in Linux
+6.16), network access during the install (it downloads about 300 MB: its
+own Python 3.13 and the hash-checked Qt dependencies), and - for game
+detection - the NVIDIA proprietary driver. No git or uv needed.
+[docs/INSTALL.md](docs/INSTALL.md) covers verifying the download
+(`SHA256SUMS`, `gh attestation verify`), what goes where, and replacing a
+from-source install. The release tarball is the only package; there is no
+distro package, Flatpak or PyPI release.
+
+To update, run `install.sh` from the newer bundle the same way; it builds
+the new environment beside the old one, swaps it in and restarts `cryod`,
+keeping `/etc/cryo` and `/var/lib/cryo`.
+
+From source (for working on Cryo; needs Python 3.12+ and
+[`uv`](https://docs.astral.sh/uv/getting-started/installation/) on your
+user's PATH, and the checkout must stay where it is):
+
 ```sh
 git clone https://github.com/I4cTime/cryo.git && cd cryo
 sudo packaging/install.sh   # venv sync + /etc/cryo + systemd unit + icons + .desktop
 ```
 
-Requires: the `alienware-wmi` kernel driver (mainline; fan control needs
-its hwmon, which landed in Linux 6.16), Python 3.12+,
-[`uv`](https://docs.astral.sh/uv/getting-started/installation/) on your
-user's PATH, and - for game detection - the NVIDIA proprietary driver.
-There is no distro package, Flatpak or PyPI release yet.
-
-To update, pull and re-run the installer; it restarts `cryod` on the new
-code:
+Update a from-source install by pulling and re-running the installer:
 
 ```sh
 cd cryo && git pull && sudo packaging/install.sh
@@ -197,8 +216,18 @@ driver is missing, so starting before the driver loads is fine.
 
 ## Uninstall
 
-`cryod` leaves the firmware where it last put it, so hand the machine back
-to stock first, then remove what the installer added:
+Installed from the release bundle:
+
+```sh
+sudo /opt/cryo/uninstall.sh   # add --purge to also remove /etc/cryo and /var/lib/cryo
+```
+
+`cryod` leaves the firmware where it last put it, so the uninstaller first
+hands the machine back to stock (the `cryoctl` commands below) when the
+daemon is running, then removes everything the installer added.
+
+Installed from source, hand the machine back to stock first, then remove
+what `packaging/install.sh` added:
 
 ```sh
 cryoctl profile balanced && cryoctl boost cpu 0 && cryoctl boost gpu 0 && cryoctl cap 100

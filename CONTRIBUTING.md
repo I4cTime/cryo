@@ -24,6 +24,18 @@ The venv install is editable - after changing daemon code, just
 `sudo systemctl restart cryod`. GUI changes need only a `cryo-gui`
 relaunch.
 
+## Release bundle
+
+Releases ship `cryo-<version>-linux-x86_64.tar.gz`, built by
+`uv run --no-project tools/build_bundle.py` (wheel, hash-pinned
+requirements from `uv.lock`, a pinned static `uv`, and
+`packaging/bundle/{install,uninstall}.sh`; see
+[docs/INSTALL.md](docs/INSTALL.md)). Don't run the bundle installer on your
+own machine: it replaces a from-source install. CI's `bundle` job installs,
+upgrades and uninstalls it on the runner, and
+`tools/bundle_container_test.sh` does the same in Arch, Ubuntu and Fedora
+systemd containers with rootless podman.
+
 ## Layout
 
 - `src/cryo/daemon/` - `cryod`: engine tick, gamesense, config, socket server
