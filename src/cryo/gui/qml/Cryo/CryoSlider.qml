@@ -28,7 +28,7 @@ Slider {
         x: control.leftPadding + control.visualPosition * (control.availableWidth - width)
         y: control.topPadding + control.availableHeight / 2 - height / 2
         width: 16; height: 16; radius: 8
-        color: Theme.fg
+        color: Theme.knob
         border.color: Theme.accent
         border.width: 2
     }

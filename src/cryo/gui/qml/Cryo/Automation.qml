@@ -7,8 +7,12 @@ ColumnLayout {
     id: section
     Layout.fillWidth: true
     spacing: 18
+    // first-show reveal (Crystallize.qml)
+    opacity: reveal.t
+    transform: Translate { y: reveal.rise }
+    Crystallize { id: reveal; target: section; title: sectionTitle; order: 4 }
 
-    SectionTitle { text: "AUTOMATION" }
+    SectionTitle { id: sectionTitle; text: "AUTOMATION" }
     Panel {
         Layout.fillWidth: true
         implicitHeight: autoColumn.height + 28
@@ -43,10 +47,34 @@ ColumnLayout {
                 }
             }
             RowLayout {
-                spacing: 6
+                spacing: 5
+                Icon {
+                    name: daemon.ac ? "plug" : "battery"
+                    size: 13
+                    color: Theme.muted
+                }
                 Label {
-                    text: (daemon.ac ? "⚡ On AC power" : "🔋 On battery")
-                          + (daemon.gaming ? "  ·  🎮 game detected" : "")
+                    text: daemon.ac ? "On AC power" : "On battery"
+                    color: Theme.muted
+                    font.pixelSize: 11
+                }
+                Label {
+                    visible: daemon.gaming
+                    Layout.leftMargin: 4
+                    text: "·"
+                    color: Theme.muted
+                    font.pixelSize: 11
+                }
+                Icon {
+                    visible: daemon.gaming
+                    Layout.leftMargin: 4
+                    name: "gaming"
+                    size: 13
+                    color: Theme.muted
+                }
+                Label {
+                    visible: daemon.gaming
+                    text: "game detected"
                     color: Theme.muted
                     font.pixelSize: 11
                 }

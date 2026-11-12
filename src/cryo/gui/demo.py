@@ -236,9 +236,7 @@ class DemoDaemon(Daemon):
         self._init_sim()
         self._cpu_history, self._gpu_history, self._vram_history = [], [], []
         self._vram_peak = 0
-        if not self._connected:
-            self._connected = True
-            self.connectedChanged.emit()
+        self._set_connected(True)
         self._push()
 
     def feed(self, frame: dict) -> None:
@@ -253,10 +251,7 @@ class DemoDaemon(Daemon):
         if unknown:
             raise KeyError(f"unknown demo state {sorted(unknown)}; known: {sorted(STATE_KEYS)}")
         if "connected" in values:
-            connected = bool(values.pop("connected"))
-            if connected != self._connected:
-                self._connected = connected
-                self.connectedChanged.emit()
+            self._set_connected(bool(values.pop("connected")))
         for key, value in values.items():
             self._sim[key] = value
             self._pinned.add(key)

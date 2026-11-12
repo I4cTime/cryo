@@ -7,6 +7,10 @@ ColumnLayout {
     id: section
     Layout.fillWidth: true
     spacing: 18
+    // first-show reveal (Crystallize.qml)
+    opacity: reveal.t
+    transform: Translate { y: reveal.rise }
+    Crystallize { id: reveal; target: section; title: sectionTitle; order: 1 }
 
     function fanRpm(group) {
         let total = 0, n = 0
@@ -34,7 +38,7 @@ ColumnLayout {
         }
     }
 
-    SectionTitle { text: "TELEMETRY" }
+    SectionTitle { id: sectionTitle; text: "TELEMETRY" }
     RowLayout {
         Layout.fillWidth: true
         spacing: 10
@@ -56,10 +60,19 @@ ColumnLayout {
         }
     }
     RowLayout {
+        objectName: "gpuLoadRow"
         Layout.fillWidth: true
         spacing: 8
-        Label { text: "dGPU load"; color: Theme.muted; font.pixelSize: 11 }
+        opacity: Ambient.stale ? Ambient.staleOpacity : 1
+        // On the backdrop: the label and the figure each get a Clearing.
+        Label {
+            objectName: "gpuLoadLabel"
+            text: "dGPU load"; color: Theme.muted; font.pixelSize: 11
+            Clearing { objectName: "clearing" }
+        }
         Rectangle {
+            objectName: "gpuLoadBar"
+            z: 1        // above the figure's Clearing, which reaches under it
             Layout.fillWidth: true
             height: 5; radius: 3
             color: Theme.track
@@ -68,27 +81,37 @@ ColumnLayout {
                 height: parent.height; radius: 3
                 gradient: Gradient {
                     orientation: Gradient.Horizontal
-                    GradientStop { position: 0.0; color: Theme.accent2 }
-                    GradientStop { position: 1.0; color: Theme.accent2Text }
+                    GradientStop { position: 0.0; color: Ambient.stale ? Theme.muted : Theme.accent2 }
+                    GradientStop { position: 1.0; color: Ambient.stale ? Theme.muted : Theme.accent2Text }
                 }
                 Behavior on width { enabled: Ambient.motion; NumberAnimation { duration: 300 } }
             }
         }
-        Mono { text: daemon.gpuUtil + "%"; color: Theme.fg; font.pixelSize: 11 }
+        Mono {
+            objectName: "gpuLoadValue"
+            text: daemon.gpuUtil + "%"; color: Ambient.stale ? Theme.muted : Theme.fg; font.pixelSize: 11
+            Clearing { objectName: "clearing" }
+        }
     }
 
     // VRAM - sparkline scaled to the card's full capacity, so a
     // leak reads as a steady climb and healthy load as a plateau.
     // The per-process rows below it name the offender.
     Panel {
+        id: vramPanel
+        objectName: "vramPanel"
         visible: daemon.vramTotal > 0
         Layout.fillWidth: true
         implicitHeight: vramColumn.height + 24
+        // stale (cryod unreachable): the reading dims and goes muted
+        readonly property real inkOpacity: Ambient.stale ? Ambient.staleOpacity : 1
+        readonly property color lineColor: Ambient.stale ? Theme.muted : Theme.accent2Text
 
         Canvas {
             id: vramSpark
             anchors.fill: parent
             anchors.margins: 1
+            opacity: vramPanel.inkOpacity
             onPaint: {
                 const ctx = getContext("2d")
                 ctx.reset()
@@ -107,8 +130,8 @@ ColumnLayout {
                     top = Math.min(top, y)
                 }
                 const fill = ctx.createLinearGradient(0, top, 0, height)
-                fill.addColorStop(0, Qt.alpha(Theme.accent2Text, 0.14))
-                fill.addColorStop(1, Qt.alpha(Theme.accent2Text, 0.0))
+                fill.addColorStop(0, Qt.alpha(vramPanel.lineColor, 0.14))
+                fill.addColorStop(1, Qt.alpha(vramPanel.lineColor, 0.0))
                 ctx.beginPath()
                 ctx.moveTo(0, height)
                 for (const p of pts)
@@ -120,7 +143,7 @@ ColumnLayout {
                 ctx.beginPath()
                 for (let i = 0; i < pts.length; i++)
                     i === 0 ? ctx.moveTo(pts[i][0], pts[i][1]) : ctx.lineTo(pts[i][0], pts[i][1])
-                ctx.strokeStyle = Qt.alpha(Theme.accent2Text, 0.45)
+                ctx.strokeStyle = Qt.alpha(vramPanel.lineColor, 0.45)
                 ctx.lineWidth = 1.5
                 ctx.lineJoin = "round"
                 ctx.stroke()
@@ -129,10 +152,19 @@ ColumnLayout {
                 target: daemon
                 function onTelemetryChanged() { vramSpark.requestPaint() }
             }
+            Connections {
+                target: Theme
+                function onRevisionChanged() { vramSpark.requestPaint() }
+            }
+            Connections {
+                target: Ambient
+                function onStaleChanged() { vramSpark.requestPaint() }
+            }
         }
 
         ColumnLayout {
             id: vramColumn
+            opacity: vramPanel.inkOpacity
             x: 16
             y: 12
             width: parent.width - 32
@@ -146,7 +178,8 @@ ColumnLayout {
                     Label {
                         text: (daemon.vramUsed / 1024).toFixed(1) + " GB"
                         font.features: { "tnum": 1 }
-                        color: daemon.vramUsed / daemon.vramTotal >= 0.9 ? Theme.hot : Theme.fg
+                        color: Ambient.stale ? Theme.muted
+                               : daemon.vramUsed / daemon.vramTotal >= 0.9 ? Theme.hot : Theme.fg
                         font.pixelSize: 20
                         font.bold: true
                     }
@@ -187,7 +220,7 @@ ColumnLayout {
                     }
                     Mono {
                         text: (modelData.vram_mb / 1024).toFixed(1) + " GB"
-                        color: Theme.fg
+                        color: Ambient.stale ? Theme.muted : Theme.fg
                         font.pixelSize: 10
                     }
                 }

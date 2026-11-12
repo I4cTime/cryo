@@ -8,9 +8,13 @@ ColumnLayout {
     id: section
     Layout.fillWidth: true
     spacing: 18
+    // first-show reveal (Crystallize.qml)
+    opacity: reveal.t
+    transform: Translate { y: reveal.rise }
+    Crystallize { id: reveal; target: section; title: sectionTitle; order: 5 }
     visible: daemon.hasLighting
 
-    SectionTitle { text: "LIGHTING"; visible: daemon.hasLighting }
+    SectionTitle { id: sectionTitle; text: "LIGHTING"; visible: daemon.hasLighting }
     Panel {
         visible: daemon.hasLighting
         Layout.fillWidth: true
@@ -23,6 +27,9 @@ ColumnLayout {
 
             // Seeded from daemon config; a swatch click takes over.
             property string currentColor: daemon.lightColor
+            // LED colours the keyboard can show: data, not theme (exempt
+            // from the colour-literal rule in tests/test_gui_tokens.py).
+            readonly property var swatches: ["#00D1FF", "#7B2DFF", "#FF2D55", "#3DDC97", "#FFB300", "#F3F5F9"]
 
             KbdPreview {
                 objectName: "kbdPreview"
@@ -72,6 +79,7 @@ ColumnLayout {
                             anchors.fill: fxHaloSrc
                             shadowEnabled: true
                             shadowColor: Theme.accent
+                            shadowOpacity: Theme.glow
                             shadowBlur: 0.7
                             blurMax: 12
                         }
@@ -95,13 +103,15 @@ ColumnLayout {
                 spacing: 8
                 Label { text: "Color"; color: Theme.muted; font.pixelSize: 11 }
                 Repeater {
-                    model: ["#00D1FF", "#7B2DFF", "#FF2D55", "#3DDC97", "#FFB300", "#F3F5F9"]
+                    model: lightColumn.swatches
                     delegate: Rectangle {
                         required property string modelData
                         width: 22; height: 22; radius: 11
                         color: modelData
-                        border.width: lightColumn.currentColor === modelData ? 2 : 0
-                        border.color: Theme.fg
+                        // light styles outline every swatch (a white LED
+                        // swatch would vanish on a pale panel)
+                        border.width: lightColumn.currentColor === modelData ? 2 : Theme.isLight ? 1 : 0
+                        border.color: lightColumn.currentColor === modelData ? Theme.fg : Theme.panelBorder
                         MouseArea {
                             anchors.fill: parent
                             cursorShape: Qt.PointingHandCursor

@@ -115,6 +115,10 @@ ColumnLayout {
             function onTelemetryChanged() { chart.requestPaint() }
             function onConfigChanged() { chart.requestPaint() }
         }
+        Connections {
+            target: Theme
+            function onRevisionChanged() { chart.requestPaint() }
+        }
     }
     Repeater {
         model: points
@@ -135,7 +139,8 @@ ColumnLayout {
             }
             Item { Layout.fillWidth: true }
             CryoButton {
-                label: "✕"
+                icon: "close"
+                tooltip: "Remove point"
                 enabled: points.count > 2
                 onClicked: { points.remove(index); editor.dirty = true }
             }

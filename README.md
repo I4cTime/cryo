@@ -45,6 +45,16 @@ modules - that does things stock AWCC (and the Windows original) don't:
   cyan↔violet preset, plus the per-key keyboard backlight (a separate
   Darfon USB device on the m16/m18: colour, brightness and its firmware
   breathe / wave / pulse / night-rider effects), all restored on boot.
+- **A window with a temperature** - frost frames the GUI while the machine
+  is cool and recedes as it heats, the background shifts from cold to hot
+  colours, and a Thermal Guard trip sweeps frost across the window until
+  it releases. Temperatures and fan speeds roll digit by digit, and the
+  header mark's orbit follows the fans. Settings (the gear) offers four
+  styles (Cryo, Aurora, Glacier light, Blackout), an accent override,
+  reduce motion, optional synthesized interface sounds (off by default)
+  and a one-line status from Frost in the footer, worked out locally with
+  no network. Animation pauses while the window is hidden, minimized or
+  unfocused, so the GUI doesn't warm the machine it is watching.
 
 ## Will it work on my machine?
 
@@ -153,6 +163,18 @@ cryoctl light quantum / cryoctl light static 00D1FF
 cryoctl doctor
 cryo-gui
 ```
+
+To try the GUI without an Alienware machine, run it in demo mode from a
+clone - no install, no root, no daemon:
+
+```sh
+uv run cryo-gui --demo   # --scenario idle | load | guard | gaming | cycle (default)
+```
+
+Demo mode drives the real interface from a scripted stand-in for `cryod`:
+simulated temperatures, fans, a game session and a Thermal Guard trip,
+with every control responding. Nothing in it touches hardware, and its
+settings are stored apart from the real app's.
 
 Config lives at `/etc/cryo/config.json` (deep-merged over defaults in
 `cryo/daemon/config.py`) - fan curve points, guard thresholds, CPU caps per

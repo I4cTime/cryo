@@ -9,10 +9,15 @@ from PySide6.QtCore import Property, QObject, QTimer, Signal, Slot
 from PySide6.QtNetwork import QLocalSocket
 
 from cryo import paths
+from cryo.gui.voice import FrostVoice, Line, Snapshot
 
 log = logging.getLogger(__name__)
 
 HISTORY_LEN = 120  # samples kept for the sparklines (~2 min at 1 Hz)
+# Frost's timed lines (greeting, recovered, profile acknowledgement) and its
+# dwell rotation need time to pass even when no telemetry arrives
+# (disconnected), so the line is also re-evaluated on this slow timer.
+FROST_REEVALUATE_MS = 5000
 
 # Shown until the daemon's real capability block arrives (or against a
 # pre-0.2 daemon that doesn't send one): the classic m18 layout.
@@ -38,13 +43,36 @@ class Daemon(QObject):
     capabilitiesChanged = Signal()
     configChanged = Signal()
     errorOccurred = Signal(str)
+    frostLineChanged = Signal()
+    # guard / gaming: event-like state that only a frame of the current
+    # connection may assert (see _fresh).
+    eventsChanged = Signal()
 
     # True only for the scripted stand-in (cryo.gui.demo.DemoDaemon).
     DEMO = False
 
-    def __init__(self, parent: QObject | None = None) -> None:
+    def __init__(self, parent: QObject | None = None, voice: FrostVoice | None = None) -> None:
         super().__init__(parent)
+        # Frost's one-line status (cryo.gui.voice): rule-based and local,
+        # re-evaluated on every telemetry frame, on connect/disconnect and
+        # every FROST_REEVALUATE_MS. Set up before the transport, which may
+        # push a first frame straight away (DemoDaemon does).
+        self._voice = voice or FrostVoice()
+        # "Standing by." until the first frame, connection or timer tick.
+        self._frost: Line = self._voice.line
+        self.connectedChanged.connect(self._update_frost)
+        self._frost_timer = QTimer(self)
+        self._frost_timer.setInterval(FROST_REEVALUATE_MS)
+        self._frost_timer.timeout.connect(self._update_frost)
+        self._frost_timer.start()
         self._connected = False
+        # The last frame is kept across a disconnect (the UI shows it,
+        # dimmed), but `_fresh` says whether it came on the current
+        # connection. Until it does, guard and gaming read false and Frost
+        # is fed a disconnected snapshot: a stale "guard on" must not flash
+        # the window on reconnect, and the empty pre-frame state must not
+        # count as a profile.
+        self._fresh = False
         self._telemetry: dict = {}
         self._capabilities: dict = DEFAULT_CAPABILITIES
         # Effective daemon config (curves, guard, cap) for the editors,
@@ -86,16 +114,29 @@ class Daemon(QObject):
         if self._stream.state() == QLocalSocket.LocalSocketState.UnconnectedState:
             self._stream.connectToServer(str(paths.RUN_SOCKET))
 
-    def _on_stream_connected(self) -> None:
-        self._connected = True
-        self._reconnect.stop()
+    def _set_connected(self, connected: bool) -> None:
+        """Flip the connection state; every change starts a new connection
+        whose frames are not fresh until the first one arrives."""
+        if connected == self._connected:
+            return
+        events = self._events()
+        self._connected = connected
+        self._fresh = False
         self.connectedChanged.emit()
+        if self._events() != events:
+            self.eventsChanged.emit()
+
+    def _events(self) -> tuple[bool, bool]:
+        return self.guard, self.gaming
+
+    def _on_stream_connected(self) -> None:
+        self._reconnect.stop()
+        self._set_connected(True)
         self._stream.write(json.dumps({"op": "subscribe"}).encode() + b"\n")
         self._command({"op": "get_config"})
 
     def _on_stream_disconnected(self) -> None:
-        self._connected = False
-        self.connectedChanged.emit()
+        self._set_connected(False)
         self._reconnect.start()
 
     def _on_ready_read(self) -> None:
@@ -110,7 +151,11 @@ class Daemon(QObject):
                 self._apply_telemetry(message)
 
     def _apply_telemetry(self, t: dict) -> None:
+        events = self._events()
         self._telemetry = t
+        # A frame while disconnected (only the demo can script one) updates
+        # the numbers, never the events.
+        self._fresh = self._connected
         if t.get("cpu_temp") is not None:
             self._cpu_history = (self._cpu_history + [t["cpu_temp"]])[-HISTORY_LEN:]
         if t.get("gpu_temp") is not None:
@@ -127,7 +172,49 @@ class Daemon(QObject):
         if caps != self._capabilities:
             self._capabilities = caps
             self.capabilitiesChanged.emit()
+        if self._events() != events:
+            self.eventsChanged.emit()
         self.telemetryChanged.emit()
+        self._update_frost()
+
+    # -- Frost's voice -------------------------------------------------------
+
+    def frost_snapshot(self) -> Snapshot:
+        """What Frost knows about the machine right now. Until the first
+        frame of a connection it is a disconnected snapshot, so Frost never
+        greets or judges on an empty (or the previous connection's) frame."""
+        t = self._telemetry
+        thermals = bool(self._capabilities.get("thermals", True))
+
+        def temp(key: str) -> float | None:
+            value = t.get(key)
+            return float(value) if thermals and value is not None else None
+
+        ac = t.get("ac")
+        if not self._capabilities.get("ac_supply", True):
+            ac = None
+        rpms = [int(f["rpm"]) for f in t.get("fans") or [] if f.get("rpm") is not None]
+        return Snapshot(
+            connected=self._connected and self._fresh,
+            cpu=temp("cpu_temp"),
+            gpu=temp("gpu_temp"),
+            guard=self._fresh and bool(t.get("guard")),
+            gaming=self._fresh and bool(t.get("gaming")),
+            ac=None if ac is None else bool(ac),
+            profile=str(t.get("profile") or ""),
+            rpm=max(rpms) if thermals and rpms else None,
+        )
+
+    def set_voice(self, voice: FrostVoice) -> None:
+        """Swap in another FrostVoice (tests: a seeded rng and a fake clock)."""
+        self._voice = voice
+        self._update_frost()
+
+    def _update_frost(self) -> None:
+        line = self._voice.update(self.frost_snapshot())
+        if line != self._frost:
+            self._frost = line
+            self.frostLineChanged.emit()
 
     def _on_cmd_ready_read(self) -> None:
         self._cmd_buffer += bytes(self._cmd.readAll().data())
@@ -163,6 +250,16 @@ class Daemon(QObject):
     @Property(bool, notify=connectedChanged)
     def connected(self) -> bool:
         return self._connected
+
+    @Property(str, notify=frostLineChanged)
+    def frostLine(self) -> str:
+        """Frost's status line, rendered with live numbers."""
+        return self._frost.text
+
+    @Property(str, notify=frostLineChanged)
+    def frostLineKey(self) -> str:
+        """Which template the line uses; changes only when the wording does."""
+        return self._frost.key
 
     @Property(str, notify=telemetryChanged)
     def profile(self) -> str:
@@ -204,13 +301,15 @@ class Daemon(QObject):
     def vramProcs(self) -> list:
         return self._telemetry.get("vram_procs", [])
 
-    @Property(bool, notify=telemetryChanged)
+    # Event-like: false from a disconnect until the next connection's first
+    # frame (the numbers stay on screen, a stale "guard on" does not).
+    @Property(bool, notify=eventsChanged)
     def gaming(self) -> bool:
-        return bool(self._telemetry.get("gaming"))
+        return self._fresh and bool(self._telemetry.get("gaming"))
 
-    @Property(bool, notify=telemetryChanged)
+    @Property(bool, notify=eventsChanged)
     def guard(self) -> bool:
-        return bool(self._telemetry.get("guard"))
+        return self._fresh and bool(self._telemetry.get("guard"))
 
     @Property(float, notify=telemetryChanged)
     def cpuPeak(self) -> float:

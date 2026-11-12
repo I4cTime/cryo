@@ -5,15 +5,19 @@ import QtQuick.Shapes
 import QtQuick.Effects
 
 // Temperature ring gauge over a gradient sparkline of the session.
+// Stale (cryod unreachable, the figures are the last reading): the face
+// dims, the arc, sparkline and numbers go muted and the fan stops.
 Panel {
     id: tile
+    objectName: label.toLowerCase() + "Tile"
     property string label
     property real temp
     property real peak: 0
     property int rpm
     property var history: []
     property color accent: Theme.accent
-    // Eased copy of `temp`: the number and the arc glide to each reading.
+    // Eased copy of `temp`: the arc glides to each reading (the number
+    // rolls its digits instead, RollingNumber).
     property real shown: temp
     Behavior on shown {
         enabled: Ambient.motion
@@ -22,14 +26,20 @@ Panel {
     readonly property real lo: 30
     readonly property real hi: 100
     function frac(t) { return Math.min(Math.max((t - lo) / (hi - lo), 0), 1) }
-    readonly property color arcColor: Theme.tempColor(shown)
+    readonly property bool stale: Ambient.stale
+    readonly property bool effectsDrawn: GraphicsInfo.api !== GraphicsInfo.Software
+    readonly property real inkOpacity: stale ? Ambient.staleOpacity : 1
+    readonly property color arcColor: stale ? Theme.muted : Theme.tempColor(shown)
+    readonly property color lineColor: stale ? Theme.muted : accent
     Layout.fillWidth: true
     Layout.preferredHeight: 128
+    sheenAt: 0.6        // keep the facet plane clear of the gauge face
 
     Canvas {
         id: spark
         anchors.fill: parent
         anchors.margins: 1
+        opacity: tile.inkOpacity
         onPaint: {
             const ctx = getContext("2d")
             ctx.reset()
@@ -51,8 +61,8 @@ Panel {
                 top = Math.min(top, y)
             }
             const fill = ctx.createLinearGradient(0, top, 0, height)
-            fill.addColorStop(0, Qt.alpha(tile.accent, 0.22))
-            fill.addColorStop(1, Qt.alpha(tile.accent, 0.0))
+            fill.addColorStop(0, Qt.alpha(tile.lineColor, 0.22))
+            fill.addColorStop(1, Qt.alpha(tile.lineColor, 0.0))
             ctx.beginPath()
             ctx.moveTo(0, height)
             for (const p of pts)
@@ -64,7 +74,7 @@ Panel {
             ctx.beginPath()
             for (let i = 0; i < pts.length; i++)
                 i === 0 ? ctx.moveTo(pts[i][0], pts[i][1]) : ctx.lineTo(pts[i][0], pts[i][1])
-            ctx.strokeStyle = Qt.alpha(tile.accent, 0.8)
+            ctx.strokeStyle = Qt.alpha(tile.lineColor, 0.8)
             ctx.lineWidth = 1.5
             ctx.lineJoin = "round"
             ctx.stroke()
@@ -73,10 +83,19 @@ Panel {
             target: daemon
             function onTelemetryChanged() { spark.requestPaint() }
         }
+        Connections {
+            target: Theme
+            function onRevisionChanged() { spark.requestPaint() }
+        }
+        Connections {
+            target: tile
+            function onStaleChanged() { spark.requestPaint() }
+        }
     }
 
     Item {
         id: gauge
+        opacity: tile.inkOpacity
         width: 100
         height: 100
         anchors.left: parent.left
@@ -89,11 +108,12 @@ Panel {
 
         Rectangle {
             // gauge face: keeps the sparkline out from behind the number
+            // (the ice gradient's colour at the tile's middle)
             anchors.centerIn: parent
             width: 2 * gauge.r + gauge.stroke + 4
             height: width
             radius: width / 2
-            color: Theme.panel
+            color: Theme.mix(tile.iceTop, Theme.panel, 0.73)
         }
         Shape {
             anchors.fill: parent
@@ -111,9 +131,11 @@ Panel {
             }
         }
         Shape {
+            // drawn by the MultiEffect below; the software renderer draws no
+            // MultiEffect, so there the plain arc shows instead (no bloom)
             id: arc
             anchors.fill: parent
-            visible: false
+            visible: !tile.effectsDrawn && tile.temp > 0
             preferredRendererType: Shape.CurveRenderer
             ShapePath {
                 strokeColor: tile.arcColor
@@ -132,10 +154,10 @@ Panel {
             // the value arc plus its neon bloom
             source: arc
             anchors.fill: arc
-            visible: tile.temp > 0
+            visible: tile.effectsDrawn && tile.temp > 0
             shadowEnabled: true
             shadowColor: tile.arcColor
-            shadowOpacity: 0.9
+            shadowOpacity: tile.stale ? 0 : 0.9 * Theme.glow
             shadowBlur: 0.7
             blurMax: 16
         }
@@ -151,16 +173,19 @@ Panel {
                 x: gauge.width / 2 + gauge.r - width / 2
                 y: gauge.height / 2 - height / 2
                 antialiasing: true
-                color: tile.peak >= 88 ? Theme.hot : Theme.fg
+                color: tile.stale ? Theme.muted : tile.peak >= 88 ? Theme.hot : Theme.fg
             }
         }
         Column {
             anchors.centerIn: parent
             anchors.verticalCenterOffset: 2
-            Label {
+            RollingNumber {
+                objectName: tile.label.toLowerCase() + "TempRoll"
                 anchors.horizontalCenter: parent.horizontalCenter
-                text: tile.temp > 0 ? Math.round(tile.shown) : "-"
-                color: tile.temp >= 85 ? Theme.hot : Theme.fg
+                slots: 3
+                text: tile.temp > 0 ? String(Math.round(tile.temp)) : "-"
+                color: tile.stale ? Theme.muted : tile.temp >= 85 ? Theme.hot : Theme.fg
+                font.family: Theme.uiFont
                 font.pixelSize: 28
                 font.weight: Font.DemiBold
                 font.features: { "tnum": 1 }
@@ -177,6 +202,7 @@ Panel {
     }
 
     ColumnLayout {
+        opacity: tile.inkOpacity
         anchors.left: gauge.right
         anchors.leftMargin: 12
         anchors.right: parent.right
@@ -194,24 +220,27 @@ Panel {
                 font.bold: true
             }
             FanGlyph {
-                rpm: tile.rpm
+                rpm: tile.stale ? 0 : tile.rpm      // a stale reading: stopped
                 animName: tile.label.toLowerCase() + "FanSpin"
                 tint: tile.accent
             }
         }
-        Mono {
+        RollingNumber {
+            objectName: tile.label.toLowerCase() + "RpmRoll"
             Layout.fillWidth: true
             Layout.topMargin: 2
+            clip: true
+            slots: 9
             text: tile.rpm + " rpm"
-            color: Theme.fg
+            color: tile.stale ? Theme.muted : Theme.fg
+            font.family: Theme.monoFont
             font.pixelSize: 11
-            elide: Text.ElideRight
         }
         Mono {
             Layout.fillWidth: true
             visible: tile.peak > 0
             text: "peak " + tile.peak.toFixed(0) + "°"
-            color: tile.peak >= 88 ? Theme.hot : Theme.muted
+            color: !tile.stale && tile.peak >= 88 ? Theme.hot : Theme.muted
             font.pixelSize: 11
             elide: Text.ElideRight
         }
