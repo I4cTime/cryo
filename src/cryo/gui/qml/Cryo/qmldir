@@ -1,6 +1,8 @@
 module Cryo
 singleton Theme 1.0 Theme.qml
 singleton Ambient 1.0 Ambient.qml
+singleton Prefs 1.0 Prefs.qml
+singleton Sfx 1.0 Sfx.qml
 SectionTitle 1.0 SectionTitle.qml
 Mono 1.0 Mono.qml
 Panel 1.0 Panel.qml
@@ -14,6 +16,12 @@ CryoSwitch 1.0 CryoSwitch.qml
 CryoSpin 1.0 CryoSpin.qml
 CryoButton 1.0 CryoButton.qml
 CurveEditor 1.0 CurveEditor.qml
+Icon 1.0 Icon.qml
+IconButton 1.0 IconButton.qml
+Backdrop 1.0 Backdrop.qml
+FrostOverlay 1.0 fx/FrostOverlay.qml
+LivingMark 1.0 LivingMark.qml
+ConnDot 1.0 ConnDot.qml
 Header 1.0 Header.qml
 ErrorBanner 1.0 ErrorBanner.qml
 PowerModes 1.0 PowerModes.qml
@@ -23,3 +31,4 @@ CpuPower 1.0 CpuPower.qml
 Automation 1.0 Automation.qml
 Lighting 1.0 Lighting.qml
 Footer 1.0 Footer.qml
+SettingsPage 1.0 SettingsPage.qml

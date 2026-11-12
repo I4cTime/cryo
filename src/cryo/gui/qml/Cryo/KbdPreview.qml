@@ -9,7 +9,7 @@ import QtQuick.Effects
 Item {
     id: kbd
     property string effect: "static"
-    property color zoneColor: Theme.accent
+    property color zoneColor: Theme.ledCyan
     property real level: 100             // brightness 0-100
     property real t: 0                   // effect clock, seconds
     // per-zone colour, left to right
@@ -46,7 +46,8 @@ Item {
         case "static":
             return base
         case "quantum":
-            return kbd.morph([kbd.rgb(Theme.accent), kbd.rgb(Theme.accent2)], 3)
+            // the firmware's own colours, not the UI accent
+            return kbd.morph([kbd.rgb(Theme.ledCyan), kbd.rgb(Theme.ledViolet)], 3)
         case "breathe": {
             // 0.5 s in, 2 s on, 0.5 s out, 2 s off
             const p = kbd.t % 5
@@ -143,7 +144,7 @@ Item {
         height: keyArea.height + 22 + palm.height
         radius: 12
         color: Theme.deck
-        border.color: Theme.panelBorder
+        border.color: Theme.deckEdge
         border.width: 1
 
         Item {
@@ -183,7 +184,7 @@ Item {
                                     GradientStop { position: 0.0; color: Qt.alpha(Theme.keycap, 0.55) }
                                     GradientStop { position: 1.0; color: Qt.alpha(Theme.keycap, 0.86) }
                                 }
-                                border.color: Qt.alpha(Theme.fg, 0.05)
+                                border.color: Theme.keycapEdge
                                 border.width: 1
                             }
                         }
@@ -200,7 +201,7 @@ Item {
             height: 20
             radius: 4
             color: "transparent"
-            border.color: Theme.panelBorder
+            border.color: Theme.deckEdge
             border.width: 1
         }
     }

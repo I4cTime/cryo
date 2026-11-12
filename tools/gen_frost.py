@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate the frost growth map used by src/cryo/gui/fx/FrostOverlay.qml.
+"""Generate the frost growth map used by src/cryo/gui/qml/Cryo/fx/FrostOverlay.qml.
 
 Offline art tool, not a runtime dependency. Run it with:
 
@@ -7,12 +7,12 @@ Offline art tool, not a runtime dependency. Run it with:
 
 It writes two committed files:
 
-- src/cryo/gui/fx/frost_growth.png (RGB)
+- src/cryo/gui/qml/Cryo/fx/frost_growth.png (RGB)
     R = freeze order (0 freezes first at the edges and corners, 1 last at
         the window centre), following a dendritic front
     G = crystal detail (fern spines, feather veins, grains)
     B = sparse sparkle specks
-- src/cryo/gui/fx/frost_static.png (RGBA, straight alpha): the frost as
+- src/cryo/gui/qml/Cryo/fx/frost_static.png (RGBA, straight alpha): the frost as
   frost.frag draws it at amount 0.4 over nothing, for the software renderer
   fallback.
 
@@ -42,7 +42,7 @@ from PIL import Image, ImageDraw
 from scipy import ndimage
 
 ROOT = Path(__file__).resolve().parents[1]
-FX_DIR = ROOT / "src" / "cryo" / "gui" / "fx"
+FX_DIR = ROOT / "src" / "cryo" / "gui" / "qml" / "Cryo" / "fx"
 
 DEG = math.pi / 180.0
 
@@ -393,7 +393,7 @@ def sparkle_layer(segs: np.ndarray, w: int, h: int, rng, count: int) -> np.ndarr
     return np.clip(acc, 0, 1)
 
 
-# --- Shader emulation (keep in sync with src/cryo/gui/fx/frost.frag) -------
+# --- Shader emulation (keep in sync with src/cryo/gui/qml/Cryo/fx/frost.frag) ---
 
 
 def smoothstep(e0, e1, x):

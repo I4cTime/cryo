@@ -18,7 +18,7 @@ ColumnLayout {
             delegate: ModeButton {
                 required property string modelData
                 name: modelData
-                glyph: Theme.profileGlyphs[modelData] ?? "❖"
+                icon: Theme.profileIcons[modelData] ?? "mode-custom"
                 label: Theme.profileLabels[modelData]
                        ?? (modelData.charAt(0).toUpperCase() + modelData.slice(1))
                 shortLabel: Theme.profileShortLabels[modelData] ?? label

@@ -73,6 +73,10 @@ Panel {
             target: daemon
             function onTelemetryChanged() { spark.requestPaint() }
         }
+        Connections {
+            target: Theme
+            function onRevisionChanged() { spark.requestPaint() }
+        }
     }
 
     Item {
@@ -135,7 +139,7 @@ Panel {
             visible: tile.temp > 0
             shadowEnabled: true
             shadowColor: tile.arcColor
-            shadowOpacity: 0.9
+            shadowOpacity: 0.9 * Theme.glow
             shadowBlur: 0.7
             blurMax: 16
         }

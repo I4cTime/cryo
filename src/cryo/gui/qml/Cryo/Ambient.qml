@@ -2,18 +2,138 @@ pragma Singleton
 import QtQuick
 
 // Runtime state every component may react to. A singleton cannot see the
-// window or the `daemon` context property, so Main.qml pushes `live` and
-// `connected` in with Bindings.
+// window or the `daemon` context property, so Main.qml pushes `live`,
+// `connected`, the temperatures, `guard` and `profile` in with Bindings.
+//
+// Thermal chrome lives here: `heat` (how hot the machine is, 0..1) and
+// `frostAmount` (what the window frost overlay shows, 0..1), including the
+// Thermal Guard flash freeze. Nothing here animates continuously: heat moves
+// in whole-degree steps at the telemetry cadence (1 Hz) and only eases on a
+// big jump; the frost animates only for the guard sweep and the thaw.
 QtObject {
+    id: ambient
+
     // The window is on screen and focused (Main.qml computes it; when
     // forceLive is set it pushes true regardless).
     property bool live: false
     // Test hook: offscreen and headless windows are never focused, so the
     // tour and tests set this to see the app as a focused user does.
     property bool forceLive: false
-    // Gate for every looping or easing animation. Equals live for now; a
-    // reduce-motion preference will be ANDed in here.
-    readonly property bool motion: live
+    // Gate for every looping, sweeping or easing animation.
+    readonly property bool motion: live && !Prefs.reduceMotion
     // cryod reachable (mirrors daemon.connected).
     property bool connected: false
+
+    // ---- pushed from the daemon by Main.qml ----
+    property real cpuTemp: 0
+    property real gpuTemp: 0
+    property bool hasThermals: true
+    property bool guard: false          // Thermal Guard engaged (and connected)
+    property string profile: ""
+
+    // ---- heat ----
+    // No temperatures to go by (disconnected, no thermals, no reading yet):
+    // the chrome sits at a neutral heat and reads as dormant.
+    readonly property bool dormant: !connected || !hasThermals || Math.max(cpuTemp, gpuTemp) <= 0
+    readonly property real neutralHeat: 0.4
+    readonly property real coldTemp: 45      // °C at heat 0
+    readonly property real hotTemp: 85       // °C at heat 1
+    // max(cpu, gpu) rounded to a whole degree, so sub-degree jitter never
+    // repaints the window.
+    readonly property real heatTarget: dormant
+        ? neutralHeat
+        : Math.max(0, Math.min(1, (Math.round(Math.max(cpuTemp, gpuTemp)) - coldTemp) / (hotTemp - coldTemp)))
+    property real heat: neutralHeat
+    readonly property real heatJump: 0.15    // bigger steps ease, smaller ones snap
+
+    function _updateHeat() {
+        heatEase.stop()
+        if (motion && Math.abs(heatTarget - heat) > heatJump) {
+            heatEase.from = heat
+            heatEase.to = heatTarget
+            heatEase.start()
+        } else {
+            heat = heatTarget
+        }
+    }
+    onHeatTargetChanged: _updateHeat()
+    readonly property NumberAnimation heatEase: NumberAnimation {
+        target: ambient; property: "heat"; duration: 400; easing.type: Easing.OutCubic
+    }
+
+    // ---- frost ----
+    // Idle frost frames the window while cool and is gone by about 69 °C.
+    readonly property real idleMax: 0.38
+    readonly property real idleFade: 0.6     // heat at which idle frost is gone
+    readonly property real peakAmount: 0.95  // flash freeze overshoot
+    readonly property real heldAmount: 0.48  // frosted frame while the guard holds
+    readonly property real idleFrost: idleMax * Math.max(0, Math.min(1, 1 - heat / idleFade))
+    // "none", "sweep" (freezing over), "held" (settled, guard on), "thaw".
+    property string guardPhase: "none"
+    property real guardFrost: 0
+    readonly property real frostAmount: !Prefs.effects ? 0
+                                        : guardPhase === "none" ? idleFrost : guardFrost
+    // The frost jumped without a sweep (reduce motion or unfocused): the
+    // overlay crossfades from the previous amount if the window is live.
+    signal frostJumped(real from)
+
+    onGuardChanged: guard ? _engage() : _release()
+    function _engage() {
+        thawAnim.stop()
+        const from = frostAmount
+        if (!motion || !Prefs.effects) {
+            guardFrost = heldAmount
+            guardPhase = "held"
+            if (Prefs.effects)
+                frostJumped(from)
+            return
+        }
+        guardFrost = from
+        guardPhase = "sweep"
+        sweepAnim.start()
+    }
+    function _release() {
+        sweepAnim.stop()
+        if (guardPhase === "none")
+            return
+        const from = frostAmount
+        if (!motion || !Prefs.effects) {
+            guardPhase = "none"
+            if (Prefs.effects)
+                frostJumped(from)
+            return
+        }
+        guardPhase = "thaw"
+        thawAnim.from = guardFrost
+        thawAnim.to = idleFrost
+        thawAnim.start()
+    }
+    readonly property SequentialAnimation sweepAnim: SequentialAnimation {
+        NumberAnimation {
+            target: ambient; property: "guardFrost"; to: ambient.peakAmount
+            duration: 550; easing.type: Easing.OutCubic
+        }
+        ScriptAction { script: ambient.guardPhase = "held" }
+        NumberAnimation {
+            target: ambient; property: "guardFrost"; to: ambient.heldAmount
+            duration: 800; easing.type: Easing.InOutSine
+        }
+    }
+    readonly property NumberAnimation thawAnim: NumberAnimation {
+        target: ambient; property: "guardFrost"; duration: 2500; easing.type: Easing.InOutSine
+        onFinished: ambient.guardPhase = "none"
+    }
+
+    // Jump every running chrome animation to where it is heading (the tour
+    // calls this between scenes so each shot starts from rest).
+    function snap() {
+        heatEase.stop()
+        heat = heatTarget
+        sweepAnim.stop()
+        thawAnim.stop()
+        guardFrost = guard ? heldAmount : 0
+        guardPhase = guard ? "held" : "none"
+    }
+
+    Component.onCompleted: heat = heatTarget
 }

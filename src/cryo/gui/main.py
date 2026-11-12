@@ -6,15 +6,21 @@ import argparse
 import sys
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QUrl
+from PySide6.QtCore import QCoreApplication, Qt, QUrl
 from PySide6.QtGui import QAction, QColor, QIcon, QPainter, QPixmap
 from PySide6.QtQml import QQmlApplicationEngine
 from PySide6.QtWidgets import QApplication, QMenu, QSystemTrayIcon
 
 from cryo.gui.bridge import Daemon
+from cryo.gui.icons import PROVIDER_ID, IconProvider
 
 QML_DIR = Path(__file__).parent / "qml"
 ASSETS_DIR = Path(__file__).parent / "assets"
+
+# QSettings identity (the Prefs singleton): ~/.config/i4c/Cryo.conf, or
+# Cryo-demo.conf in demo mode. The application name is the caller's.
+ORGANIZATION = "i4c"
+ORGANIZATION_DOMAIN = "i4c.studio"
 
 PROFILE_LABELS = {
     "cool": "Cool",
@@ -53,9 +59,16 @@ def build_engine(daemon: Daemon, qml_file: Path | None = None) -> QQmlApplicatio
     """The QML engine every entry point uses (app, tour, tests): the `Cryo`
     module on the import path, the bridge as the `daemon` context property,
     Main.qml loaded. Check `engine.rootObjects()` for success, and delete
-    the engine before the daemon it references."""
+    the engine before the daemon it references.
+
+    Sets the organization name and domain the Prefs singleton (QtCore
+    Settings) needs; the application name ("Cryo", "Cryo-demo") is left to
+    the caller, which must set it before this runs."""
+    QCoreApplication.setOrganizationName(ORGANIZATION)
+    QCoreApplication.setOrganizationDomain(ORGANIZATION_DOMAIN)
     engine = QQmlApplicationEngine()
     engine.addImportPath(str(QML_DIR))
+    engine.addImageProvider(PROVIDER_ID, IconProvider())
     engine.rootContext().setContextProperty("daemon", daemon)
     engine.load(QUrl.fromLocalFile(str(qml_file or QML_DIR / "Main.qml")))
     return engine

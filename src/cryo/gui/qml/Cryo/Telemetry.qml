@@ -129,6 +129,10 @@ ColumnLayout {
                 target: daemon
                 function onTelemetryChanged() { vramSpark.requestPaint() }
             }
+            Connections {
+                target: Theme
+                function onRevisionChanged() { vramSpark.requestPaint() }
+            }
         }
 
         ColumnLayout {

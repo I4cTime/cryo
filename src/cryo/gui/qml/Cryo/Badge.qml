@@ -6,14 +6,15 @@ import QtQuick.Effects
 Rectangle {
     id: badge
     property string text
+    property string icon              // optional icon name before the text
     property color tint: Theme.hot
     property color ink: tint
     property string pulseName         // objectName of the pulse (for tests)
     // Opaque fill so the halo shows only outside the pill.
-    color: Qt.tint(Theme.bg, Qt.alpha(tint, 0.22))
+    color: Qt.tint(Theme.bg, Qt.alpha(tint, Theme.isLight ? 0.12 : 0.22))
     border.color: ink
     radius: 6
-    implicitWidth: badgeText.implicitWidth + 16
+    implicitWidth: badgeRow.implicitWidth + 16
     implicitHeight: 24
 
     Rectangle {
@@ -30,6 +31,7 @@ Rectangle {
         anchors.fill: badgeHaloSrc
         shadowEnabled: true
         shadowColor: badge.tint
+        shadowOpacity: Theme.glow
         shadowBlur: 1.0
         blurMax: 20
         opacity: 0.35
@@ -41,13 +43,25 @@ Rectangle {
             NumberAnimation { to: 0.35; duration: 900; easing.type: Easing.InOutSine }
         }
     }
-    Label {
-        id: badgeText
+    Row {
+        id: badgeRow
         anchors.centerIn: parent
-        text: badge.text
-        color: badge.ink
-        font.pixelSize: 10
-        font.bold: true
-        font.letterSpacing: 2
+        spacing: 5
+        Icon {
+            anchors.verticalCenter: parent.verticalCenter
+            visible: badge.icon !== ""
+            name: badge.icon
+            size: 12
+            color: badge.ink
+        }
+        Label {
+            id: badgeText
+            anchors.verticalCenter: parent.verticalCenter
+            text: badge.text
+            color: badge.ink
+            font.pixelSize: 10
+            font.bold: true
+            font.letterSpacing: 2
+        }
     }
 }

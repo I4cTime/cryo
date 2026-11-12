@@ -6,7 +6,7 @@ import QtQuick.Effects
 Rectangle {
     id: mode
     property string name
-    property string glyph
+    property string icon             // name in assets/icons
     property string label            // full name (tooltip)
     property string shortLabel       // fits a 1/7th-width cell
     readonly property bool active: daemon.profile === name
@@ -38,7 +38,7 @@ Rectangle {
         visible: opacity > 0
         shadowEnabled: true
         shadowColor: Theme.accent
-        shadowOpacity: 1.0
+        shadowOpacity: Theme.glow
         shadowBlur: 0.9
         blurMax: 20
         Behavior on opacity { enabled: Ambient.motion; NumberAnimation { duration: 200 } }
@@ -48,14 +48,17 @@ Rectangle {
         anchors.centerIn: parent
         width: parent.width - 6
         spacing: 3
-        Label {
-            // Fixed box: emoji glyphs differ in height, labels stay aligned.
+        Item {
+            // Fixed box so the labels stay aligned under every icon.
             anchors.horizontalCenter: parent.horizontalCenter
+            width: 20
             height: 20
-            verticalAlignment: Text.AlignVCenter
-            text: mode.glyph
-            font.pixelSize: 16
-            color: mode.active ? Theme.accent : Theme.muted
+            Icon {
+                anchors.centerIn: parent
+                name: mode.icon
+                size: 18
+                color: mode.active ? Theme.accent : Theme.muted
+            }
         }
         Label {
             width: parent.width

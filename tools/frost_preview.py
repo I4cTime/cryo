@@ -30,7 +30,7 @@ from PySide6.QtQml import QQmlApplicationEngine
 from PySide6.QtQuick import QQuickItem, QQuickWindow  # noqa: F401  (QQuickWindow: grabWindow)
 
 ROOT = Path(__file__).resolve().parents[1]
-FX_DIR = ROOT / "src" / "cryo" / "gui" / "fx"
+FX_DIR = ROOT / "src" / "cryo" / "gui" / "qml" / "Cryo" / "fx"
 
 AMOUNTS = [0.0, 0.15, 0.30, 0.45, 0.60, 0.85, 1.0]
 SWEEP = [0.0, 0.15, 0.30, 0.45, 0.60, 0.75, 0.90]

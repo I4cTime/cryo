@@ -24,7 +24,7 @@ Rectangle {
         anchors.fill: panelShadowSrc
         shadowEnabled: true
         shadowColor: Theme.shadow
-        shadowOpacity: 0.9
+        shadowOpacity: Theme.shadowOpacity
         shadowBlur: 1.0
         blurMax: 24
         shadowVerticalOffset: 6
