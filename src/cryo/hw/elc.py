@@ -53,10 +53,18 @@ class Elc:
 
     def __init__(self) -> None:
         self.dev = None
-        for pid in PRODUCT_IDS:
-            self.dev = usb.core.find(idVendor=VENDOR_ID, idProduct=pid)
-            if self.dev is not None:
-                break
+        try:
+            for pid in PRODUCT_IDS:
+                self.dev = usb.core.find(idVendor=VENDOR_ID, idProduct=pid)
+                if self.dev is not None:
+                    break
+        except usb.core.NoBackendError as exc:
+            # pyusb is installed but the system libusb-1.0 is not. That is a
+            # missing capability, not a reason for cryod to crash-loop:
+            # chassis lighting is simply unavailable until it is installed.
+            raise ElcNotFound(
+                "libusb-1.0 is not installed, so the AlienFX ELC cannot be reached"
+            ) from exc
         if self.dev is None:
             raise ElcNotFound("AlienFX ELC (187c:0550/0551) not found on USB")
         self._claimed = False

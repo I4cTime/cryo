@@ -93,3 +93,18 @@ def test_brightness_dims_every_chassis_zone():
     (dim,) = dev.sent
     assert dim[1] == elc.OP_SET_DIM and dim[2] == 60
     assert dim[3:5] == b"\x00\x04" and list(dim[5:9]) == [0, 1, 2, 4]
+
+
+def test_missing_libusb_reads_as_no_controller(monkeypatch):
+    """Without the system libusb-1.0, pyusb raises NoBackendError (a
+    ValueError, not a USBError). That must degrade to "no ELC", the same
+    path as a machine without the controller, instead of killing cryod."""
+    import pytest
+    import usb.core
+
+    def no_backend(**_kwargs):
+        raise usb.core.NoBackendError("No backend available")
+
+    monkeypatch.setattr(usb.core, "find", no_backend)
+    with pytest.raises(elc.ElcNotFound, match="libusb"):
+        elc.Elc()
