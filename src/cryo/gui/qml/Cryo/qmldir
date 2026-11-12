@@ -37,3 +37,6 @@ SettingRow 1.0 SettingRow.qml
 StyleCard 1.0 StyleCard.qml
 AccentPicker 1.0 AccentPicker.qml
 Segmented 1.0 Segmented.qml
+RollingNumber 1.0 RollingNumber.qml
+FrostBloom 1.0 FrostBloom.qml
+Crystallize 1.0 Crystallize.qml

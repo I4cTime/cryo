@@ -390,6 +390,81 @@ class Tour:
         return 100.0 * used / (t1 - t0)
 
 
+# -- alive touches (cryo feel F2): bloom, hover, reveal ------------------------
+# Synthetic pointer events go to the tour's own window only (QTest posts them
+# straight into Qt), never to the desktop. Every scene starts with the
+# pointer parked outside the window, so a hover never leaks into the next.
+
+ANIMATED.update({"markOrbit": 12, "connBreath": 8})
+
+
+def _pointer(tour: "Tour", x: float, y: float, press: bool = False) -> None:
+    from PySide6.QtCore import QPoint, Qt
+    from PySide6.QtTest import QTest
+
+    pos = QPoint(round(x), round(y))
+    QTest.mouseMove(tour.window, pos)
+    if press:
+        QTest.mousePress(tour.window, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, pos)
+        QTest.mouseRelease(tour.window, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, pos)
+
+
+def _park_pointer(tour: "Tour") -> None:
+    _pointer(tour, -40, -40)
+
+
+_reset_keeping_pointer = Tour.reset
+
+
+def _reset_parking_pointer(self: "Tour") -> None:
+    _reset_keeping_pointer(self)
+    _park_pointer(self)
+
+
+Tour.reset = _reset_parking_pointer     # type: ignore[method-assign]
+
+
+def _centre(tour: "Tour", obj) -> tuple[float, float]:
+    r = obj.mapRectToScene(obj.boundingRect())
+    return r.x() + r.width() / 2, r.y() + r.height() / 2
+
+
+@scene("bloom", settle=150)
+def _bloom(tour: "Tour") -> None:
+    # about 150 ms into the frost bloom under a pressed mode button
+    tour.ramp(**IDLE)
+    tour.wait(SETTLE_MS)
+    # Repeater delegates are not QObject children of the window: walk items
+    button = next((i for i in tour.items() if i.objectName() == "mode-cool"), None)
+    if button is None:
+        raise SystemExit("tour: no mode button 'mode-cool'")
+    x, y = _centre(tour, button)
+    _pointer(tour, x + 6, y - 4, press=True)
+
+
+@scene("hover-panel", settle=500)
+def _hover_panel(tour: "Tour") -> None:
+    tour.ramp(**IDLE)
+    tour.scroll_to_title("FAN CONTROL")
+    tour.wait(SETTLE_MS)
+    title = tour.find_title("Automatic fan curves")
+    r = title.mapRectToScene(title.boundingRect())
+    _pointer(tour, r.x() + r.width() + 40, r.y() + r.height() / 2)
+
+
+@scene("reveal-mid", settle=200)
+def _reveal_mid(tour: "Tour") -> None:
+    # the first-show reveal replayed, 200 ms in (the stagger mid-flight)
+    from PySide6.QtCore import QMetaObject
+
+    tour.ramp(**IDLE)
+    tour.wait(SETTLE_MS)
+    if tour.ambient is not None:
+        QMetaObject.invokeMethod(tour.ambient, "replayReveal")
+
+# -- end alive touches -----------------------------------------------------------
+
+
 # -- entry points ----------------------------------------------------------
 
 def _hex_colour(value: str) -> str:

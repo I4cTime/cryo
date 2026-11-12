@@ -13,7 +13,8 @@ Panel {
     property int rpm
     property var history: []
     property color accent: Theme.accent
-    // Eased copy of `temp`: the number and the arc glide to each reading.
+    // Eased copy of `temp`: the arc glides to each reading (the number
+    // rolls its digits instead, RollingNumber).
     property real shown: temp
     Behavior on shown {
         enabled: Ambient.motion
@@ -25,6 +26,7 @@ Panel {
     readonly property color arcColor: Theme.tempColor(shown)
     Layout.fillWidth: true
     Layout.preferredHeight: 128
+    sheenAt: 0.6        // keep the facet plane clear of the gauge face
 
     Canvas {
         id: spark
@@ -93,11 +95,12 @@ Panel {
 
         Rectangle {
             // gauge face: keeps the sparkline out from behind the number
+            // (the ice gradient's colour at the tile's middle)
             anchors.centerIn: parent
             width: 2 * gauge.r + gauge.stroke + 4
             height: width
             radius: width / 2
-            color: Theme.panel
+            color: Theme.mix(tile.iceTop, Theme.panel, 0.73)
         }
         Shape {
             anchors.fill: parent
@@ -161,10 +164,13 @@ Panel {
         Column {
             anchors.centerIn: parent
             anchors.verticalCenterOffset: 2
-            Label {
+            RollingNumber {
+                objectName: tile.label.toLowerCase() + "TempRoll"
                 anchors.horizontalCenter: parent.horizontalCenter
-                text: tile.temp > 0 ? Math.round(tile.shown) : "-"
+                slots: 3
+                text: tile.temp > 0 ? String(Math.round(tile.temp)) : "-"
                 color: tile.temp >= 85 ? Theme.hot : Theme.fg
+                font.family: Theme.uiFont
                 font.pixelSize: 28
                 font.weight: Font.DemiBold
                 font.features: { "tnum": 1 }
@@ -203,13 +209,16 @@ Panel {
                 tint: tile.accent
             }
         }
-        Mono {
+        RollingNumber {
+            objectName: tile.label.toLowerCase() + "RpmRoll"
             Layout.fillWidth: true
             Layout.topMargin: 2
+            clip: true
+            slots: 9
             text: tile.rpm + " rpm"
             color: Theme.fg
+            font.family: Theme.monoFont
             font.pixelSize: 11
-            elide: Text.ElideRight
         }
         Mono {
             Layout.fillWidth: true
