@@ -67,7 +67,7 @@ modules - that does things stock AWCC (and the Windows original) don't:
 
 ## Will it work on my machine?
 
-Developed on an **Alienware m18 R2** (Pop!_OS); designed for the wider
+Developed on an **Alienware m18 R2** (Arch Linux); designed for the wider
 alienware-wmi ecosystem - the daemon probes what your machine supports at
 startup (profiles, G-Mode, fan boost, lighting, turbo control, NVML) and
 every client renders only what exists. Reported so far:
