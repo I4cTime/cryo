@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="https://raw.githubusercontent.com/I4cTime/cryo/main/assets/brand/social-card.jpg" alt="Cryo - the Alienware command center for Linux" width="100%" />
+  <img src="https://raw.githubusercontent.com/I4cTime/cryo/main/assets/brand/social-card.jpg" alt="Cryo - fan control, G-Mode and AlienFX for Alienware laptops on Linux" width="100%" />
 </div>
 
 # Cryo
@@ -8,6 +8,7 @@ Website: [cryo.i4c.studio](https://cryo.i4c.studio)
 
 [![CI](https://img.shields.io/github/actions/workflow/status/I4cTime/cryo/ci.yml?style=flat-square&label=CI)](https://github.com/I4cTime/cryo/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/I4cTime/cryo?style=flat-square&color=00d1ff)](https://github.com/I4cTime/cryo/releases)
+[![Download](https://img.shields.io/badge/download-Linux%20x86__64-00d1ff?style=flat-square&logo=linux&logoColor=white)](https://cryo.i4c.studio/download/linux-x86_64)
 [![Website](https://img.shields.io/badge/website-cryo.i4c.studio-00d1ff?style=flat-square)](https://cryo.i4c.studio)
 [![Docs](https://img.shields.io/badge/docs-cryo.i4c.studio-00d1ff?style=flat-square)](https://cryo.i4c.studio/docs)
 [![Platform](https://img.shields.io/badge/platform-Linux-00d1ff?style=flat-square&logo=linux&logoColor=white)](https://cryo.i4c.studio)
@@ -55,6 +56,14 @@ modules - that does things stock AWCC (and the Windows original) don't:
   and a one-line status from Frost in the footer, worked out locally with
   no network. Animation pauses while the window is hidden, minimized or
   unfocused, so the GUI doesn't warm the machine it is watching.
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/I4cTime/cryo/main/assets/screenshots/cryo.webp" alt="The Cryo window in the Cryo style: power modes, CPU and GPU gauges, frost at the edges" width="24%" />
+  <img src="https://raw.githubusercontent.com/I4cTime/cryo/main/assets/screenshots/aurora.webp" alt="The Cryo window in the Aurora style" width="24%" />
+  <img src="https://raw.githubusercontent.com/I4cTime/cryo/main/assets/screenshots/glacier.webp" alt="The Cryo window in the Glacier style, the light one" width="24%" />
+  <img src="https://raw.githubusercontent.com/I4cTime/cryo/main/assets/screenshots/blackout.webp" alt="The Cryo window in the Blackout style" width="24%" />
+</p>
+<p align="center"><sub>The four styles: Cryo, Aurora, Glacier and Blackout. Try them without an Alienware with <code>cryo-gui --demo</code>, or in the simulation on <a href="https://cryo.i4c.studio">cryo.i4c.studio</a>.</sub></p>
 
 ## Will it work on my machine?
 
@@ -113,8 +122,10 @@ Cryo labels it accordingly.
 
 ## Install
 
-Download `cryo-<version>-linux-x86_64.tar.gz` from the
-[latest release](https://github.com/I4cTime/cryo/releases/latest), then:
+Download `cryo-<version>-linux-x86_64.tar.gz` from
+[cryo.i4c.studio/download/linux-x86_64](https://cryo.i4c.studio/download/linux-x86_64)
+or the [latest release](https://github.com/I4cTime/cryo/releases/latest),
+then:
 
 ```sh
 tar xf cryo-*-linux-x86_64.tar.gz && cd cryo-*/
